@@ -1,7 +1,0 @@
-.idea/
-.vscode/
-**/.gradle/
-**/build/
-**/run/
-**/out/
-*.iml
