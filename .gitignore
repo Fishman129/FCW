@@ -1,0 +1,11 @@
+.idea/
+.vscode/
+**/.gradle/
+**/build/
+**/run/
+**/out/
+*.iml
+Architectury-API/
+FTB-Chunks/
+FTB-Library/
+FTB-Teams/
