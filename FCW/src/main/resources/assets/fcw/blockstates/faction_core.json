@@ -1,0 +1,6 @@
+{
+  "variants": {
+    "lit=true": { "model": "fcw:block/faction_core" },
+    "lit=false": { "model": "fcw:block/faction_core" }
+  }
+}

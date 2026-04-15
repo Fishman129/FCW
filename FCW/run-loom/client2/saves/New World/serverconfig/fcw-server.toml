@@ -1,0 +1,52 @@
+
+[core]
+	#Range: 1 ~ 32
+	breachRadius = 7
+	#Range: 0 ~ 4096
+	baseClaimChunks = 1
+	#Range: > 0
+	relocationCooldownSeconds = 300
+
+[claims]
+	#Range: 1 ~ 512
+	claimsPerUpgrade = 4
+	#Range: 0 ~ 128
+	maxClaimRange = 8
+	requireConnectedClaims = true
+	blockManualFtbClaims = true
+	adminBypassStructuredClaims = false
+
+[raid]
+	allowAlliedRaiding = false
+	forceUnclaimOnSuccess = true
+	suspendProtectionOnSuccess = false
+	#Range: > 10
+	baseDurationSeconds = 300
+	#Range: 4 ~ 96
+	presenceRadius = 16
+	#Range: > 0
+	logoutGraceSeconds = 20
+	keepActiveRaidChunksLoaded = true
+
+[raidScaling]
+	enabled = true
+	#Range: > 1
+	minFactionSize = 3
+	#Range: 0.0 ~ 1.0
+	ratioThreshold = 0.5
+	#Range: 1.0 ~ 100.0
+	maxPartialMultiplier = 2.5
+	#Range: 1.0 ~ 100.0
+	zeroOnlineMultiplier = 4.0
+	#Range: > 1
+	minFinalSeconds = 120
+	#Range: > 1
+	maxFinalSeconds = 3600
+	recentJoinsCount = false
+	#Range: > 0
+	newMemberGraceSeconds = 3600
+
+[raidItem]
+	baseCost = ["minecraft:nether_star=1", "minecraft:diamond=4"]
+	scalingCost = ["minecraft:diamond=2"]
+

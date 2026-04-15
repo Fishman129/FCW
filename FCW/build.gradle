@@ -1,0 +1,176 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'architectury-plugin' version '3.4-SNAPSHOT'
+    id 'dev.architectury.loom' version '1.7-SNAPSHOT'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
+
+architectury {
+    minecraft = minecraft_version
+    platformSetupLoomIde()
+    forge()
+}
+
+loom {
+    silentMojangMappingsLicense()
+
+    forge {
+    }
+
+    runs {
+        configureEach {
+            vmArg '-Dforge.logging.markers=REGISTRIES'
+            vmArg '-Dforge.logging.console.level=debug'
+        }
+
+        client {
+            client()
+            name = 'Minecraft Client'
+            property 'forge.enabledGameTestNamespaces', mod_id
+            runDir = 'run-loom/client1'
+            programArgs '--username', 'Dev1'
+        }
+
+        client2 {
+            client()
+            name = 'Minecraft Client 2'
+            property 'forge.enabledGameTestNamespaces', mod_id
+            runDir = 'run-loom/client2'
+            programArgs '--username', 'Dev2'
+        }
+
+        server {
+            server()
+            property 'forge.enabledGameTestNamespaces', mod_id
+            runDir = 'run-loom/server'
+            programArg '--nogui'
+        }
+
+        gameTestServer {
+            runDir = 'run-loom/gametest'
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
+
+        data {
+            data()
+            runDir = 'run-data-loom'
+            programArgs '--mod', mod_id, '--all',
+                    '--output', file('src/generated/resources/').absolutePath,
+                    '--existing', file('src/main/resources/').absolutePath
+        }
+    }
+}
+
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+
+    maven {
+        url = 'https://maven.architectury.dev/'
+        content {
+            includeGroup 'dev.architectury'
+        }
+    }
+
+    maven {
+        url = 'https://maven.ftb.dev/releases'
+        content {
+            includeGroup 'dev.ftb.mods'
+        }
+    }
+
+    maven {
+        url = 'https://maven.ftb.dev/snapshots'
+        content {
+            includeGroup 'dev.ftb.mods'
+        }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings loom.officialMojangMappings()
+    forge "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    implementation include("io.github.llamalad7:mixinextras-forge:0.4.1")
+    modImplementation "dev.architectury:architectury-forge:${architectury_version}"
+    modImplementation("dev.ftb.mods:ftb-library-forge:${ftb_library_version}") { transitive = false }
+    modImplementation("dev.ftb.mods:ftb-teams-forge:${ftb_teams_version}") { transitive = false }
+    modImplementation("dev.ftb.mods:ftb-chunks-forge:${ftb_chunks_version}") { transitive = false }
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            minecraft_version       : minecraft_version,
+            minecraft_version_range : minecraft_version_range,
+            forge_version           : forge_version,
+            forge_version_range     : forge_version_range,
+            loader_version_range    : loader_version_range,
+            mod_id                  : mod_id,
+            mod_name                : mod_name,
+            mod_license             : mod_license,
+            mod_version             : mod_version,
+            mod_authors             : mod_authors,
+            mod_description         : mod_description
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    archiveClassifier.set('dev')
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1',
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : project.version,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        ])
+    }
+}
+
+tasks.named('remapJar').configure {
+    archiveClassifier.set('')
+    dependsOn tasks.named('jar')
+}
+
+tasks.named('assemble').configure {
+    dependsOn tasks.named('remapJar')
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            artifact tasks.named('remapJar')
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/mcmodsrepo"
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
