@@ -10,6 +10,8 @@ import com.fishguy129.fcw.config.FCWServerConfig;
 import com.fishguy129.fcw.data.FCWSavedData;
 import com.fishguy129.fcw.item.RaidBeaconItem;
 import com.fishguy129.fcw.menu.FactionCoreMenu;
+import com.fishguy129.fcw.network.CoreRecipeSyncMessage;
+import com.fishguy129.fcw.network.FCWNetwork;
 import com.fishguy129.fcw.registry.FCWBlocks;
 import com.fishguy129.fcw.registry.FCWItems;
 import com.fishguy129.fcw.util.ItemCostHelper;
@@ -32,15 +34,18 @@ import net.minecraft.world.Containers;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerData;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.network.NetworkHooks;
+import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.joml.Vector3f;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 // Owns the server-side core lifecycle: placement, upgrades, claim syncing,
 // packing, visuals, and the bits raids need to tear a core down cleanly. 
@@ -298,6 +303,7 @@ public class CoreManager {
         RaidBeaconItem.bind(stack, team.getId(), teamCompat.displayName(team));
         player.getInventory().placeItemBackInInventory(stack);
         savedData.incrementRaidCraftCount(team.getId());
+        player.inventoryMenu.broadcastChanges();
         player.displayClientMessage(Component.translatable("message.fcw.raid.item_created").withStyle(ChatFormatting.GREEN), false);
     }
 
@@ -925,5 +931,20 @@ public class CoreManager {
         public void close() {
             MUTATION_SCOPE.remove();
         }
+    }
+
+    public void syncRecipesToPlayer(ServerPlayer player, BlockPos corePos) {
+        Team team = teamCompat.resolveFactionTeam(player).orElse(null);
+        if (team == null) return;
+        FCWSavedData savedData = data(player.server);
+        int craftedCount = savedData.raidCraftCount(team.getId());
+        List<ItemCostHelper.CostEntry> base = ItemCostHelper.parseEntries(FCWServerConfig.RAID_BASE_COST.get());
+        List<ItemCostHelper.CostEntry> scaling = ItemCostHelper.parseEntries(FCWServerConfig.RAID_SCALING_COST.get());
+        Map<Integer, List<ItemCostHelper.CostEntry>> exact = ItemCostHelper.parseLevelEntries(FCWServerConfig.RAID_EXACT_LEVEL_COSTS.get());
+        List<FactionCoreMenu.RecipeCost> current = ItemCostHelper.sorted(ItemCostHelper.resolveRaidCosts(base, scaling, exact, craftedCount))
+                .stream().map(e -> new FactionCoreMenu.RecipeCost(e.item(), e.count())).toList();
+        List<FactionCoreMenu.RecipeCost> next = ItemCostHelper.sorted(ItemCostHelper.resolveRaidCosts(base, scaling, exact, craftedCount + 1))
+                .stream().map(e -> new FactionCoreMenu.RecipeCost(e.item(), e.count())).toList();
+        FCWNetwork.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new CoreRecipeSyncMessage(corePos, current, next));
     }
 }

@@ -23,6 +23,7 @@ public final class FCWNetwork {
     public static void init() {
         CHANNEL.registerMessage(nextId++, CoreActionMessage.class, CoreActionMessage::encode, CoreActionMessage::decode, CoreActionMessage::handle);
         CHANNEL.registerMessage(nextId++, RaidStatusMessage.class, RaidStatusMessage::encode, RaidStatusMessage::decode, RaidStatusMessage::handle);
+        CHANNEL.registerMessage(nextId++, CoreRecipeSyncMessage.class, CoreRecipeSyncMessage::encode, CoreRecipeSyncMessage::decode, CoreRecipeSyncMessage::handle);
         CHANNEL.registerMessage(nextId++, HologramLoadoutMessage.class, HologramLoadoutMessage::encode, HologramLoadoutMessage::decode, HologramLoadoutMessage::handle);
     }
 }
