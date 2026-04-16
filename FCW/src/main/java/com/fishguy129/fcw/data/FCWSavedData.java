@@ -254,11 +254,12 @@ public class FCWSavedData extends SavedData {
         private long progressTicks;
         private final long requiredTicks;
         private final Set<UUID> eliminatedAttackers;
+        private final Set<UUID> eliminatedDefenders;
         private final Map<UUID, Long> logoutDeadlines;
         private final Set<Long> forcedChunks;
 
         public RaidRecord(UUID raidId, UUID attackerTeamId, UUID defenderTeamId, ResourceKey<Level> dimension, BlockPos corePos,
-                          long startedTick, long progressTicks, long requiredTicks, Set<UUID> eliminatedAttackers,
+                          long startedTick, long progressTicks, long requiredTicks, Set<UUID> eliminatedAttackers, Set<UUID> eliminatedDefenders,
                           Map<UUID, Long> logoutDeadlines, Set<Long> forcedChunks) {
             this.raidId = raidId;
             this.attackerTeamId = attackerTeamId;
@@ -269,6 +270,7 @@ public class FCWSavedData extends SavedData {
             this.progressTicks = progressTicks;
             this.requiredTicks = requiredTicks;
             this.eliminatedAttackers = eliminatedAttackers;
+            this.eliminatedDefenders = eliminatedDefenders;
             this.logoutDeadlines = logoutDeadlines;
             this.forcedChunks = forcedChunks;
         }
@@ -281,6 +283,7 @@ public class FCWSavedData extends SavedData {
         public long progressTicks() { return progressTicks; }
         public long requiredTicks() { return requiredTicks; }
         public Set<UUID> eliminatedAttackers() { return eliminatedAttackers; }
+        public Set<UUID> eliminatedDefenders() { return eliminatedDefenders; }
         public Map<UUID, Long> logoutDeadlines() { return logoutDeadlines; }
         public Set<Long> forcedChunks() { return forcedChunks; }
 
@@ -305,6 +308,14 @@ public class FCWSavedData extends SavedData {
             });
             tag.put("eliminatedAttackers", eliminated);
 
+            ListTag eliminatedDef = new ListTag();
+            eliminatedDefenders.forEach(id -> {
+                CompoundTag idTag = new CompoundTag();
+                idTag.putUUID("id", id);
+                eliminatedDef.add(idTag);
+            });
+            tag.put("eliminatedDefenders", eliminatedDef);
+
             CompoundTag deadlines = new CompoundTag();
             logoutDeadlines.forEach((id, deadline) -> deadlines.putLong(id.toString(), deadline));
             tag.put("logoutDeadlines", deadlines);
@@ -324,6 +335,12 @@ public class FCWSavedData extends SavedData {
             ListTag eliminatedTag = tag.getList("eliminatedAttackers", Tag.TAG_COMPOUND);
             for (int i = 0; i < eliminatedTag.size(); i++) {
                 eliminated.add(eliminatedTag.getCompound(i).getUUID("id"));
+            }
+
+            Set<UUID> eliminatedDef = new HashSet<>();
+            ListTag eliminatedDefTag = tag.getList("eliminatedDefenders", Tag.TAG_COMPOUND);
+            for (int i = 0; i < eliminatedDefTag.size(); i++) {
+                eliminatedDef.add(eliminatedDefTag.getCompound(i).getUUID("id"));
             }
 
             Map<UUID, Long> deadlines = new HashMap<>();
@@ -348,6 +365,7 @@ public class FCWSavedData extends SavedData {
                     tag.getLong("progressTicks"),
                     tag.getLong("requiredTicks"),
                     eliminated,
+                    eliminatedDef,
                     deadlines,
                     forcedChunks
             );

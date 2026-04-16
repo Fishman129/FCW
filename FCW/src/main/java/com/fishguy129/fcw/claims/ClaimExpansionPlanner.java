@@ -77,7 +77,8 @@ public final class ClaimExpansionPlanner {
         }
 
         if (desiredClaims.size() >= targetClaimCount) {
-            return new ExpansionPlan(targetClaimCount, List.copyOf(desiredClaims), List.of(), null);
+            List<ChunkDimPos> additions = desiredClaims.stream().filter(pos -> !currentClaims.contains(pos)).toList();
+            return new ExpansionPlan(targetClaimCount, List.copyOf(desiredClaims), additions, null);
         }
 
         if (!requireConnectedClaims) {

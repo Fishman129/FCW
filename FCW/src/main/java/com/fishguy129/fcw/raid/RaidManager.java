@@ -121,12 +121,19 @@ public class RaidManager {
         });
 
         List<ServerPlayer> attackers = validAttackers(level, attacker, raid);
-        List<ServerPlayer> defenders = validDefenders(level, defender, raid.corePos());
+        List<ServerPlayer> defenders = validDefenders(level, defender, raid.corePos(), raid);
         attackers.forEach(player -> player.addEffect(new MobEffectInstance(MobEffects.GLOWING, 40, 0, true, false, true)));
         defenders.forEach(player -> player.addEffect(new MobEffectInstance(MobEffects.GLOWING, 40, 0, true, false, true)));
 
         if (attackers.isEmpty()) {
             finishRaid(server, raid, false);
+            return;
+        }
+
+        Set<UUID> defenderMembers = new HashSet<>(teamCompat.members(defender));
+        defenderMembers.removeAll(raid.eliminatedDefenders());
+        if (defenderMembers.isEmpty() && !teamCompat.onlineMembers(defender).isEmpty()) {
+            finishRaid(server, raid, true);
             return;
         }
 
@@ -152,13 +159,12 @@ public class RaidManager {
                 .toList();
     }
 
-    private List<ServerPlayer> validDefenders(ServerLevel level, Team defender, BlockPos corePos) {
-        if (level == null || defender == null) {
-            return List.of();
-        }
+    private List<ServerPlayer> validDefenders(ServerLevel level, Team defender, BlockPos corePos, FCWSavedData.RaidRecord raid) {
+        if (level == null || defender == null) return List.of();
         int radius = FCWServerConfig.RAID_PRESENCE_RADIUS.get();
         return teamCompat.onlineMembers(defender).stream()
                 .filter(player -> player.level().dimension().equals(level.dimension()))
+                .filter(player -> !raid.eliminatedDefenders().contains(player.getUUID()))  // <-- add this
                 .filter(player -> player.blockPosition().closerThan(corePos, radius))
                 .toList();
     }
@@ -208,6 +214,9 @@ public class RaidManager {
             if (raid.attackerTeamId().equals(team.getId())) {
                 raid.logoutDeadlines().put(player.getUUID(), player.server.overworld().getGameTime() + FCWServerConfig.RAID_LOGOUT_GRACE_SECONDS.get() * 20L);
                 FCWSavedData.get(player.server).setDirty();
+            } else if (raid.defenderTeamId().equals(team.getId())) {
+                raid.eliminatedDefenders().add(player.getUUID());
+                FCWSavedData.get(player.server).setDirty();
             }
         });
     }
@@ -222,6 +231,9 @@ public class RaidManager {
             if (raid.attackerTeamId().equals(team.getId())) {
                 raid.eliminatedAttackers().add(player.getUUID());
                 FCWSavedData.get(player.server).setDirty();
+            }  else if (raid.defenderTeamId().equals(team.getId())) {
+                raid.eliminatedDefenders().add(player.getUUID());
+                FCWSavedData.get(player.server).setDirty();
             }
         });
     }
@@ -234,6 +246,7 @@ public class RaidManager {
 
         for (FCWSavedData.RaidRecord raid : FCWSavedData.get(server).activeRaids()) {
             raid.eliminatedAttackers().add(playerId);
+            raid.eliminatedDefenders().add(playerId);
         }
         FCWSavedData.get(server).setDirty();
     }
@@ -270,6 +283,7 @@ public class RaidManager {
                 now,
                 0L,
                 requiredTicks,
+                new HashSet<>(),
                 new HashSet<>(),
                 new HashMap<>(),
                 new HashSet<>(forcedChunks)
@@ -363,7 +377,7 @@ public class RaidManager {
         Team attacker = teamCompat.resolveTeamById(raid.attackerTeamId()).orElse(null);
         Team defender = teamCompat.resolveTeamById(raid.defenderTeamId()).orElse(null);
         List<UUID> attackers = validAttackers(server.getLevel(raid.dimension()), attacker, raid).stream().map(ServerPlayer::getUUID).toList();
-        List<UUID> defenders = validDefenders(server.getLevel(raid.dimension()), defender, raid.corePos()).stream().map(ServerPlayer::getUUID).toList();
+        List<UUID> defenders = validDefenders(server.getLevel(raid.dimension()), defender, raid.corePos(), raid).stream().map(ServerPlayer::getUUID).toList();
         Team viewerTeam = teamCompat.resolveFactionTeam(player).orElse(null);
         RaidStatusMessage message = new RaidStatusMessage(
                 raid.dimension().location().toString(),
