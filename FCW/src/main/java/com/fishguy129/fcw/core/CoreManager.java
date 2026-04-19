@@ -8,8 +8,12 @@ import com.fishguy129.fcw.compat.ftbchunks.FtbChunkCompat;
 import com.fishguy129.fcw.compat.ftbteams.FtbTeamCompat;
 import com.fishguy129.fcw.config.FCWServerConfig;
 import com.fishguy129.fcw.data.FCWSavedData;
+import com.fishguy129.fcw.item.FactionCoreItem;
 import com.fishguy129.fcw.item.RaidBeaconItem;
+import com.fishguy129.fcw.network.ClaimOutlineMessage;
 import com.fishguy129.fcw.menu.FactionCoreMenu;
+import com.fishguy129.fcw.network.FCWNetwork;
+import com.fishguy129.fcw.network.CoreRecipeSyncMessage;
 import com.fishguy129.fcw.registry.FCWBlocks;
 import com.fishguy129.fcw.registry.FCWItems;
 import com.fishguy129.fcw.util.ItemCostHelper;
@@ -32,15 +36,19 @@ import net.minecraft.world.Containers;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerData;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.network.NetworkHooks;
+import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.joml.Vector3f;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 // Owns the server-side core lifecycle: placement, upgrades, claim syncing,
 // packing, visuals, and the bits raids need to tear a core down cleanly. 
@@ -165,6 +173,10 @@ public class CoreManager {
     }
 
     public boolean validatePostPlacement(ServerPlayer player, BlockPos pos) {
+        return validatePostPlacement(player, pos, ItemStack.EMPTY);
+    }
+
+    public boolean validatePostPlacement(ServerPlayer player, BlockPos pos, ItemStack placementStack) {
         if (!(player.level() instanceof ServerLevel level)) {
             return false;
         }
@@ -187,6 +199,11 @@ public class CoreManager {
             return false;
         }
 
+        FCWSavedData.CoreRecord storedItemRecord = FactionCoreItem.readStoredCoreData(placementStack)
+                .map(storedData -> storedData.toPlacementRecord(team.getId(), level.dimension(), pos))
+                .orElse(null);
+        FCWSavedData.CoreRecord seedRecord = existing != null ? existing : storedItemRecord;
+
         FCWSavedData.CoreRecord record = new FCWSavedData.CoreRecord(
                 team.getId(),
                 level.dimension(),
@@ -194,9 +211,10 @@ public class CoreManager {
                 true,
                 false,
                 false,
-                existing == null ? 0 : existing.upgradeCount(),
-                existing == null ? 0L : existing.lastRelocationTick(),
-                existing == null ? FCWSavedData.CoreRecord.normalizedHologramItems(List.of()) : existing.hologramItems()
+                seedRecord == null ? 0 : seedRecord.upgradeCount(),
+                seedRecord == null ? 0L : seedRecord.lastRelocationTick(),
+                seedRecord == null ? FCWSavedData.CoreRecord.normalizedHologramItems(List.of()) : seedRecord.hologramItems(),
+                seedRecord == null ? List.of() : seedRecord.savedClaimChunks()
         );
 
         dev.ftb.mods.ftblibrary.math.ChunkDimPos coreChunk = new dev.ftb.mods.ftblibrary.math.ChunkDimPos(level, pos);
@@ -205,15 +223,37 @@ public class CoreManager {
             return false;
         }
 
-        if (!applyStructuredClaims(player, level, team, record, existing)) {
+        boolean restoreSavedFootprint = shouldRestoreSavedFootprint(seedRecord, level, pos);
+        List<dev.ftb.mods.ftblibrary.math.ChunkDimPos> desiredClaims;
+        if (restoreSavedFootprint) {
+            desiredClaims = savedClaimPositions(seedRecord);
+            if (!restoreExactSavedClaims(player, level, team, record, desiredClaims, existing)) {
+                return false;
+            }
+        } else {
+            ClaimExpansionPlanner.ExpansionPlan plan = resolveClaimPlan(team, record, List.of());
+            if (!plan.success()) {
+                player.displayClientMessage(Component.translatable(plan.failureKey()).withStyle(ChatFormatting.RED), false);
+                return false;
+            }
+
+            desiredClaims = plan.desiredClaims();
+            if (!applyStructuredClaims(player, level, team, plan, record, existing)) {
+                return false;
+            }
+        }
+
+        if (!ensureCorePlacementClaims(player, level, team, record, existing, pos)) {
             return false;
         }
 
         // Only persist the core after the territory shape is accepted and claimed.
-        savedData.putCore(record);
-        syncClaimLimit(team, record);
-        syncCoreBlock(level, record);
-        chunkCompat.syncClaimsToClients(team, level.getServer());
+        List<Long> persistedClaimChunks = currentClaimChunkLongs(team);
+        FCWSavedData.CoreRecord persistedRecord = record.withSavedClaimChunks(persistedClaimChunks.isEmpty() ? chunkLongs(desiredClaims) : persistedClaimChunks);
+        savedData.putCore(persistedRecord);
+        syncClaimLimit(team, persistedRecord);
+        syncCoreBlock(level, persistedRecord);
+        syncClaimState(team, level.getServer());
         playPlacementEffects(level, pos);
         player.displayClientMessage(Component.translatable("message.fcw.core.placed").withStyle(ChatFormatting.GREEN), false);
         return true;
@@ -236,30 +276,27 @@ public class CoreManager {
             return false;
         }
 
-        FCWSavedData.CoreRecord upgraded = record.withUpgradeCount(record.upgradeCount() + 1);
-        ClaimExpansionPlanner.ExpansionPlan plan = ClaimExpansionPlanner.plan(
-                upgraded,
-                chunkCompat.claimedChunks(team),
-                allowedClaimCount(upgraded),
-                FCWServerConfig.MAX_CLAIM_RANGE.get(),
-                pos -> chunkCompat.isClaimedByOtherTeam(team, pos),
-                FCWServerConfig.SMART_CLAIM_EXPANSION.get(),
-                FCWServerConfig.REQUIRE_CONNECTED_CLAIMS.get()
-        );
+        if (hasUpgradeCap() && record.upgradeCount() >= maxCoreUpgrades()) {
+            player.displayClientMessage(Component.translatable("message.fcw.core.max_upgrades_reached").withStyle(ChatFormatting.RED), false);
+            return false;
+        }
 
+        FCWSavedData.CoreRecord upgraded = record.withUpgradeCount(record.upgradeCount() + 1);
+        ClaimExpansionPlanner.ExpansionPlan plan = resolveClaimPlan(team, upgraded, List.of());
         if (!plan.success()) {
             player.displayClientMessage(Component.translatable(plan.failureKey()).withStyle(ChatFormatting.RED), false);
             return false;
         }
 
-        if (!applyStructuredClaims(player, level, team, upgraded, record)) {
+        if (!applyStructuredClaims(player, level, team, plan, upgraded, record)) {
             return false;
         }
 
-        data(level.getServer()).putCore(upgraded);
-        syncClaimLimit(team, upgraded);
-        syncCoreBlock(level, upgraded);
-        chunkCompat.syncClaimsToClients(team, level.getServer());
+        FCWSavedData.CoreRecord persistedUpgrade = upgraded.withSavedClaimChunks(chunkLongs(plan.desiredClaims()));
+        data(level.getServer()).putCore(persistedUpgrade);
+        syncClaimLimit(team, persistedUpgrade);
+        syncCoreBlock(level, persistedUpgrade);
+        syncClaimState(team, level.getServer());
         int gainedClaims = plan.newClaims().size();
         playUpgradeEffects(level, corePos, gainedClaims);
         player.displayClientMessage(Component.translatable("message.fcw.claims.expanded", gainedClaims).withStyle(ChatFormatting.GREEN), false);
@@ -298,6 +335,7 @@ public class CoreManager {
         RaidBeaconItem.bind(stack, team.getId(), teamCompat.displayName(team));
         player.getInventory().placeItemBackInInventory(stack);
         savedData.incrementRaidCraftCount(team.getId());
+        player.inventoryMenu.broadcastChanges();
         player.displayClientMessage(Component.translatable("message.fcw.raid.item_created").withStyle(ChatFormatting.GREEN), false);
     }
 
@@ -370,17 +408,16 @@ public class CoreManager {
 
         suppressCoreRemoval = true;
         try {
-            // Packing is like a controlled teardown: pull the block, keep the record,
-            // and optionally strip the claims depending on config.
+            // Pull the block, keep the record, and optionally strip the claims depending on config.
             level.setBlock(record.pos(), Blocks.AIR.defaultBlockState(), 3);
-            FCWSavedData.CoreRecord packed = record.withPacked(true, now);
+            FCWSavedData.CoreRecord packed = capturePackedCoreRecord(record, team, now);
             data(level.getServer()).putCore(packed);
             if (FCWServerConfig.UNCLAIM_ALL_ON_CORE_PACK.get()) {
                 clearFactionClaimsForPacking(player.createCommandSourceStack(), team);
             } else {
                 syncClaimLimitWhilePacked(team);
             }
-            ItemStack coreStack = new ItemStack(FCWItems.FACTION_CORE.get());
+            ItemStack coreStack = buildPackedCoreStack(packed, team);
             player.getInventory().placeItemBackInInventory(coreStack);
             level.playSound(null, corePos, SoundEvents.BEACON_DEACTIVATE, SoundSource.BLOCKS, 0.95F, 1.08F);
             level.playSound(null, corePos, SoundEvents.ITEM_PICKUP, SoundSource.PLAYERS, 0.5F, 0.8F);
@@ -399,8 +436,8 @@ public class CoreManager {
                 .filter(record -> record.dimension().equals(level.dimension()) && record.pos().equals(pos))
                 .findFirst()
                 .ifPresent(record -> {
-                    data(serverLevel.getServer()).putCore(record.withActive(false));
-                    FCWMod.LOGGER.warn("Faction core for team {} was removed outside the validated FCW flow; marking it inactive", record.teamId());
+                    FCWMod.LOGGER.warn("Faction core for team {} was removed outside the validated FCW flow; tearing down FCW state", record.teamId());
+                    forceRemoveCoreState(serverLevel.getServer(), record.teamId());
                 });
     }
 
@@ -424,11 +461,21 @@ public class CoreManager {
     }
 
     public int allowedClaimCount(FCWSavedData.CoreRecord record) {
-        return FCWServerConfig.BASE_CLAIM_CHUNKS.get() + record.upgradeCount() * FCWServerConfig.CLAIMS_PER_UPGRADE.get();
+        return FCWServerConfig.BASE_CLAIM_CHUNKS.get() + effectiveUpgradeCount(record.upgradeCount()) * FCWServerConfig.CLAIMS_PER_UPGRADE.get();
     }
 
     public void tick(MinecraftServer server) {
         long time = server.overworld().getGameTime();
+        if (time % 20L == 0L) {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                syncClaimOutline(player);
+            }
+        }
+        for (FCWSavedData.CoreRecord record : List.copyOf(data(server).allCores())) {
+            if (teamCompat.resolveTeamById(record.teamId()).isEmpty()) {
+                forceRemoveCoreState(server, record.teamId());
+            }
+        }
         if (time % 10L != 0L) {
             return;
         }
@@ -501,24 +548,12 @@ public class CoreManager {
     }
 
     public void resetCore(CommandSourceStack source, UUID teamId) {
-        Team team = teamCompat.resolveTeamById(teamId).orElse(null);
-        FCWSavedData.CoreRecord record = data(source.getServer()).getCore(teamId).orElse(null);
-        if (record != null) {
-            ServerLevel level = source.getServer().getLevel(record.dimension());
-            if (level != null && level.isLoaded(record.pos())) {
-                suppressCoreRemoval = true;
-                level.setBlock(record.pos(), Blocks.AIR.defaultBlockState(), 3);
-                suppressCoreRemoval = false;
-            }
-            data(source.getServer()).removeCore(teamId);
-        }
+        forceRemoveCoreState(source.getServer(), teamId);
+    }
+
+    public void resetCore(CommandSourceStack source, Team team) {
         if (team != null) {
-            Team limitHolder = claimLimitHolder(team);
-            chunkCompat.setExtraClaimChunks(limitHolder, 0);
-            if (!limitHolder.getId().equals(team.getId())) {
-                chunkCompat.setExtraClaimChunks(team, 0);
-                chunkCompat.refreshLimits(team);
-            }
+            forceRemoveCoreState(source.getServer(), team.getId(), team);
         }
     }
 
@@ -529,13 +564,37 @@ public class CoreManager {
         clearFactionClaimsForPacking(source, team);
     }
 
-    public void destroyCoreForRaid(ServerLevel level, FCWSavedData.CoreRecord record, boolean dropUpgrades) {
+    public void dropPackedCoreForDisband(MinecraftServer server, Team team) {
+        if (server == null || team == null) {
+            return;
+        }
+
+        FCWSavedData.CoreRecord record = data(server).getCore(team.getId()).orElse(null);
+        if (record == null || record.packed()) {
+            return;
+        }
+
+        ServerLevel level = server.getLevel(record.dimension());
+        if (level == null) {
+            return;
+        }
+
+        long now = level.getGameTime();
+        ItemStack preservedCore = buildPackedCoreStack(capturePackedCoreRecord(record, team, now), team);
+        Containers.dropItemStack(level,
+                record.pos().getX() + 0.5D,
+                record.pos().getY() + 0.6D,
+                record.pos().getZ() + 0.5D,
+                preservedCore);
+    }
+
+    public void destroyCoreForRaid(ServerLevel level, FCWSavedData.CoreRecord record, int droppedUpgradeCount) {
         if (level == null || record == null) {
             return;
         }
 
-        if (dropUpgrades && record.upgradeCount() > 0) {
-            dropUpgradeLoot(level, record);
+        if (droppedUpgradeCount > 0) {
+            dropUpgradeLoot(level, record.pos(), droppedUpgradeCount);
         }
 
         suppressCoreRemoval = true;
@@ -597,22 +656,8 @@ public class CoreManager {
         return record != null && !record.packed() && record.pos().equals(pos) ? record : null;
     }
 
-    private boolean applyStructuredClaims(ServerPlayer player, ServerLevel level, Team team, FCWSavedData.CoreRecord desiredRecord, FCWSavedData.CoreRecord rollbackRecord) {
-        ClaimExpansionPlanner.ExpansionPlan plan = ClaimExpansionPlanner.plan(
-                desiredRecord,
-                chunkCompat.claimedChunks(team),
-                allowedClaimCount(desiredRecord),
-                FCWServerConfig.MAX_CLAIM_RANGE.get(),
-                pos -> chunkCompat.isClaimedByOtherTeam(team, pos),
-                FCWServerConfig.SMART_CLAIM_EXPANSION.get(),
-                FCWServerConfig.REQUIRE_CONNECTED_CLAIMS.get()
-        );
-
-        if (!plan.success()) {
-            player.displayClientMessage(Component.translatable(plan.failureKey()).withStyle(ChatFormatting.RED), false);
-            return false;
-        }
-
+    private boolean applyStructuredClaims(ServerPlayer player, ServerLevel level, Team team, ClaimExpansionPlanner.ExpansionPlan plan,
+                                          FCWSavedData.CoreRecord desiredRecord, FCWSavedData.CoreRecord rollbackRecord) {
         Set<dev.ftb.mods.ftblibrary.math.ChunkDimPos> additions = new LinkedHashSet<>(plan.newClaims());
         List<dev.ftb.mods.ftblibrary.math.ChunkDimPos> claimedNow = new ArrayList<>();
         syncClaimLimit(team, desiredRecord);
@@ -683,9 +728,13 @@ public class CoreManager {
         burst(level, pos, ParticleTypes.CRIT, 30, 0.65D, 0.65D, 0.65D, 0.1D);
         burst(level, pos, ParticleTypes.ELECTRIC_SPARK, 25, 0.55D, 0.55D, 0.55D, 0.08D);
         burst(level, pos, ParticleTypes.SCULK_SOUL, 18, 0.7D, 0.4D, 0.7D, 0.03D);
+        burst(level, pos, ParticleTypes.SWEEP_ATTACK, 8, 0.38D, 0.32D, 0.38D, 0.0D);
+        spawnSwordClashParticles(level, pos, level.getGameTime(), 1.5D);
         level.playSound(null, pos, SoundEvents.BEACON_DEACTIVATE, SoundSource.BLOCKS, 1.0F, 0.75F);
         level.playSound(null, pos, SoundEvents.RESPAWN_ANCHOR_DEPLETE.value(), SoundSource.BLOCKS, 0.8F, 0.9F);
         level.playSound(null, pos, SoundEvents.END_PORTAL_SPAWN, SoundSource.BLOCKS, 0.65F, 0.55F);
+        level.playSound(null, pos, SoundEvents.PLAYER_ATTACK_SWEEP, SoundSource.BLOCKS, 1.0F, 0.75F);
+        level.playSound(null, pos, SoundEvents.ANVIL_PLACE, SoundSource.BLOCKS, 0.55F, 1.45F);
     }
 
     public void playRaidResolvedEffects(ServerLevel level, BlockPos pos, boolean success) {
@@ -762,6 +811,9 @@ public class CoreManager {
         if (time % 8L == 0L) {
             spawnGroundSigil(level, pos, true, raidScale, time);
         }
+        if (time % 6L == 0L) {
+            spawnSwordClashParticles(level, pos, time, raidScale);
+        }
         if (time % 80L == 0L) {
             level.playSound(null, pos, resolveConfiguredSound(FCWServerConfig.RAID_WORLD_SOUND_EVENT.get(), SoundEvents.RESPAWN_ANCHOR_CHARGE),
                     SoundSource.BLOCKS, FCWServerConfig.RAID_WORLD_SOUND_VOLUME.get().floatValue(), 0.85F + (progress * 0.25F));
@@ -802,24 +854,331 @@ public class CoreManager {
             claimedPositions.add(chunk.getPos());
         }
 
-        // Mark every outgoing unclaim as internal so the manual-claim guard does not
+        // I mark every outgoing unclaim as internal so the manual claim guard does not
         // trip over FCW cleaning up its own territory.
         try (MutationScope ignored = MutationScope.open(team.getId(), Set.of(), claimedPositions)) {
             chunkCompat.clearClaims(source, team);
         }
 
         syncClaimLimitWhilePacked(team);
-        chunkCompat.syncClaimsToClients(team, source.getServer());
+        syncClaimState(team, source.getServer());
     }
 
-    private void dropUpgradeLoot(ServerLevel level, FCWSavedData.CoreRecord record) {
-        int remaining = record.upgradeCount();
+    private ClaimExpansionPlanner.ExpansionPlan resolveClaimPlan(Team team, FCWSavedData.CoreRecord desiredRecord,
+                                                                 List<dev.ftb.mods.ftblibrary.math.ChunkDimPos> savedFootprint) {
+        if (savedFootprint != null && !savedFootprint.isEmpty()) {
+            return ClaimExpansionPlanner.planRestoration(
+                    desiredRecord,
+                    chunkCompat.claimedChunks(team),
+                    savedFootprint,
+                    allowedClaimCount(desiredRecord),
+                    FCWServerConfig.MAX_CLAIM_RANGE.get(),
+                    pos -> chunkCompat.isClaimedByOtherTeam(team, pos),
+                    FCWServerConfig.REQUIRE_CONNECTED_CLAIMS.get()
+            );
+        }
+        return ClaimExpansionPlanner.plan(
+                desiredRecord,
+                chunkCompat.claimedChunks(team),
+                allowedClaimCount(desiredRecord),
+                FCWServerConfig.MAX_CLAIM_RANGE.get(),
+                pos -> chunkCompat.isClaimedByOtherTeam(team, pos),
+                FCWServerConfig.SMART_CLAIM_EXPANSION.get(),
+                FCWServerConfig.REQUIRE_CONNECTED_CLAIMS.get()
+        );
+    }
+
+    private boolean shouldRestoreSavedFootprint(FCWSavedData.CoreRecord existing, ServerLevel level, BlockPos pos) {
+        // Packed core saves chunk list kinda like a ghost outline. If the new
+        // core lands inside that old territory, restore the exact same claims.
+        if (existing == null || !existing.dimension().equals(level.dimension()) || existing.savedClaimChunks().isEmpty()) {
+            return false;
+        }
+        ChunkPos chunkPos = new ChunkPos(pos);
+        return existing.savedClaimChunks().contains(ChunkPos.asLong(chunkPos.x, chunkPos.z));
+    }
+
+    private List<dev.ftb.mods.ftblibrary.math.ChunkDimPos> savedClaimPositions(FCWSavedData.CoreRecord record) {
+        if (record == null || record.savedClaimChunks().isEmpty()) {
+            return List.of();
+        }
+        List<dev.ftb.mods.ftblibrary.math.ChunkDimPos> positions = new ArrayList<>(record.savedClaimChunks().size());
+        for (Long chunkLong : record.savedClaimChunks()) {
+            ChunkPos chunkPos = new ChunkPos(chunkLong);
+            positions.add(new dev.ftb.mods.ftblibrary.math.ChunkDimPos(record.dimension(), chunkPos.x, chunkPos.z));
+        }
+        return List.copyOf(positions);
+    }
+
+    private boolean restoreExactSavedClaims(ServerPlayer player, ServerLevel level, Team team, FCWSavedData.CoreRecord desiredRecord,
+                                            Collection<dev.ftb.mods.ftblibrary.math.ChunkDimPos> savedClaims,
+                                            FCWSavedData.CoreRecord rollbackRecord) {
+        LinkedHashSet<dev.ftb.mods.ftblibrary.math.ChunkDimPos> desiredClaims = new LinkedHashSet<>();
+        for (dev.ftb.mods.ftblibrary.math.ChunkDimPos pos : savedClaims) {
+            if (pos != null && pos.dimension().equals(desiredRecord.dimension())) {
+                desiredClaims.add(pos);
+            }
+        }
+
+        dev.ftb.mods.ftblibrary.math.ChunkDimPos coreChunk = new dev.ftb.mods.ftblibrary.math.ChunkDimPos(level, desiredRecord.pos());
+        desiredClaims.add(coreChunk);
+
+        LinkedHashSet<dev.ftb.mods.ftblibrary.math.ChunkDimPos> additions = new LinkedHashSet<>();
+        for (dev.ftb.mods.ftblibrary.math.ChunkDimPos pos : desiredClaims) {
+            if (!chunkCompat.isClaimedByTeam(team, pos)) {
+                additions.add(pos);
+            }
+        }
+
+        syncClaimLimit(team, desiredRecord);
+        if (additions.isEmpty()) {
+            return true;
+        }
+
+        List<dev.ftb.mods.ftblibrary.math.ChunkDimPos> claimedNow = new ArrayList<>();
+        try (MutationScope ignored = MutationScope.open(team.getId(), additions, Set.of())) {
+            for (dev.ftb.mods.ftblibrary.math.ChunkDimPos chunkPos : additions) {
+                ClaimResult result = chunkCompat.claim(player.createCommandSourceStack(), team, chunkPos, true);
+                if (result != null && !result.isSuccess()) {
+                    rollbackStructuredClaims(player, team, rollbackRecord, claimedNow);
+                    player.displayClientMessage(result.getMessage().withStyle(ChatFormatting.RED), false);
+                    return false;
+                }
+            }
+
+            for (dev.ftb.mods.ftblibrary.math.ChunkDimPos chunkPos : additions) {
+                ClaimResult result = chunkCompat.claim(player.createCommandSourceStack(), team, chunkPos, false);
+                if (result != null && !result.isSuccess()) {
+                    FCWMod.LOGGER.error("Failed to restore saved FCW claim footprint for {} at {}", team.getId(), chunkPos);
+                    rollbackStructuredClaims(player, team, rollbackRecord, claimedNow);
+                    player.displayClientMessage(result.getMessage().withStyle(ChatFormatting.RED), false);
+                    return false;
+                }
+                claimedNow.add(chunkPos);
+            }
+        }
+
+        return true;
+    }
+
+    private List<Long> currentClaimChunkLongs(Team team) {
+        List<Long> chunks = new ArrayList<>();
+        for (dev.ftb.mods.ftbchunks.api.ClaimedChunk chunk : chunkCompat.claimedChunks(team)) {
+            chunks.add(ChunkPos.asLong(chunk.getPos().x(), chunk.getPos().z()));
+        }
+        return List.copyOf(chunks);
+    }
+
+    private List<Long> currentClaimChunkLongs(Team team, net.minecraft.resources.ResourceKey<Level> dimension) {
+        List<Long> chunks = new ArrayList<>();
+        for (dev.ftb.mods.ftbchunks.api.ClaimedChunk chunk : chunkCompat.claimedChunks(team)) {
+            if (chunk.getPos().dimension().equals(dimension)) {
+                chunks.add(ChunkPos.asLong(chunk.getPos().x(), chunk.getPos().z()));
+            }
+        }
+        return List.copyOf(chunks);
+    }
+
+    private FCWSavedData.CoreRecord capturePackedCoreRecord(FCWSavedData.CoreRecord record, Team team, long packedAt) {
+        return record.withSavedClaimChunks(resolvePackedClaimChunks(record, team)).withPacked(true, packedAt);
+    }
+
+    private ItemStack buildPackedCoreStack(FCWSavedData.CoreRecord record, Team team) {
+        ItemStack stack = new ItemStack(FCWItems.FACTION_CORE.get());
+        FactionCoreItem.storePackedCoreData(stack, record, team == null ? null : teamCompat.displayName(team));
+        return stack;
+    }
+
+    private List<Long> resolvePackedClaimChunks(FCWSavedData.CoreRecord record, Team team) {
+        LinkedHashSet<Long> packedChunks = new LinkedHashSet<>();
+        if (record != null) {
+            packedChunks.addAll(record.savedClaimChunks());
+            packedChunks.add(ChunkPos.asLong(new ChunkPos(record.pos()).x, new ChunkPos(record.pos()).z));
+        }
+        if (team != null) {
+            packedChunks.addAll(currentClaimChunkLongs(team));
+        }
+        return List.copyOf(packedChunks);
+    }
+
+    private List<Long> chunkLongs(Collection<dev.ftb.mods.ftblibrary.math.ChunkDimPos> positions) {
+        List<Long> chunks = new ArrayList<>(positions.size());
+        for (dev.ftb.mods.ftblibrary.math.ChunkDimPos pos : positions) {
+            chunks.add(ChunkPos.asLong(pos.x(), pos.z()));
+        }
+        return List.copyOf(chunks);
+    }
+
+    private Set<dev.ftb.mods.ftblibrary.math.ChunkDimPos> claimedChunkPositions(UUID teamId) {
+        Set<dev.ftb.mods.ftblibrary.math.ChunkDimPos> positions = new HashSet<>();
+        for (dev.ftb.mods.ftbchunks.api.ClaimedChunk chunk : List.copyOf(chunkCompat.claimedChunks(teamId))) {
+            positions.add(chunk.getPos());
+        }
+        return Set.copyOf(positions);
+    }
+
+    private void clearClaimPositions(CommandSourceStack source, Collection<dev.ftb.mods.ftblibrary.math.ChunkDimPos> positions) {
+        Map<UUID, Team> ownerTeams = new LinkedHashMap<>();
+        Map<UUID, Set<dev.ftb.mods.ftblibrary.math.ChunkDimPos>> positionsByOwner = new LinkedHashMap<>();
+
+        for (dev.ftb.mods.ftblibrary.math.ChunkDimPos pos : positions) {
+            dev.ftb.mods.ftbchunks.api.ClaimedChunk chunk = chunkCompat.getClaim(pos);
+            if (chunk == null) {
+                continue;
+            }
+
+            Team ownerTeam = chunk.getTeamData().getTeam();
+            if (ownerTeam == null) {
+                continue;
+            }
+
+            ownerTeams.putIfAbsent(ownerTeam.getId(), ownerTeam);
+            positionsByOwner.computeIfAbsent(ownerTeam.getId(), ignored -> new LinkedHashSet<>()).add(pos);
+        }
+
+        for (Map.Entry<UUID, Set<dev.ftb.mods.ftblibrary.math.ChunkDimPos>> entry : positionsByOwner.entrySet()) {
+            Team ownerTeam = ownerTeams.get(entry.getKey());
+            if (ownerTeam == null || entry.getValue().isEmpty()) {
+                continue;
+            }
+
+            try (MutationScope ignored = MutationScope.open(ownerTeam.getId(), Set.of(), Set.copyOf(entry.getValue()))) {
+                for (dev.ftb.mods.ftblibrary.math.ChunkDimPos pos : entry.getValue()) {
+                    chunkCompat.unclaim(source, ownerTeam, pos, false);
+                }
+            }
+        }
+    }
+
+    private void syncClaimState(Team team, MinecraftServer server) {
+        chunkCompat.syncClaimsToClients(team, server);
+        syncClaimOutlines(team, server);
+    }
+
+    private void forceRemoveCoreState(MinecraftServer server, UUID teamId) {
+        forceRemoveCoreState(server, teamId, null);
+    }
+
+    private void forceRemoveCoreState(MinecraftServer server, UUID teamId, Team knownTeam) {
+        FCWSavedData.CoreRecord record = data(server).getCore(teamId).orElse(null);
+        if (record != null) {
+            ServerLevel level = server.getLevel(record.dimension());
+            if (level != null && level.getBlockState(record.pos()).is(FCWBlocks.FACTION_CORE.get())) {
+                suppressCoreRemoval = true;
+                try {
+                    level.setBlock(record.pos(), Blocks.AIR.defaultBlockState(), 3);
+                } finally {
+                    suppressCoreRemoval = false;
+                }
+            }
+        }
+
+        Team team = knownTeam != null ? knownTeam : teamCompat.resolveTeamById(teamId).orElse(null);
+        Set<dev.ftb.mods.ftblibrary.math.ChunkDimPos> unclaims = new LinkedHashSet<>(savedClaimPositions(record));
+        unclaims.addAll(claimedChunkPositions(teamId));
+        if (team != null) {
+            for (dev.ftb.mods.ftbchunks.api.ClaimedChunk chunk : List.copyOf(chunkCompat.claimedChunks(team))) {
+                unclaims.add(chunk.getPos());
+            }
+        }
+        if (!unclaims.isEmpty()) {
+            clearClaimPositions(server.createCommandSourceStack(), unclaims);
+        }
+        if (team != null) {
+            syncClaimLimitWhilePacked(team);
+            if (team.getMembers().isEmpty()) {
+                chunkCompat.purgeTeamData(team);
+                syncClaimOutlines(team, server);
+            } else {
+                syncClaimState(team, server);
+            }
+        }
+
+        data(server).removeCore(teamId);
+        data(server).clearTeamMeta(teamId);
+    }
+
+    private boolean ensureCorePlacementClaims(ServerPlayer player, ServerLevel level, Team team, FCWSavedData.CoreRecord desiredRecord,
+                                              FCWSavedData.CoreRecord rollbackRecord, BlockPos corePos) {
+        dev.ftb.mods.ftblibrary.math.ChunkDimPos coreChunk = new dev.ftb.mods.ftblibrary.math.ChunkDimPos(level, corePos);
+        if (chunkCompat.isClaimedByTeam(team, coreChunk) && chunkCompat.claimCount(team) > 0) {
+            return true;
+        }
+
+        if (!chunkCompat.isClaimedByTeam(team, coreChunk)) {
+            try (MutationScope ignored = MutationScope.open(team.getId(), Set.of(coreChunk), Set.of())) {
+                ClaimResult check = chunkCompat.claim(player.createCommandSourceStack(), team, coreChunk, true);
+                if (check != null && !check.isSuccess()) {
+                    player.displayClientMessage(check.getMessage().withStyle(ChatFormatting.RED), false);
+                    return false;
+                }
+                ClaimResult applied = chunkCompat.claim(player.createCommandSourceStack(), team, coreChunk, false);
+                if (applied != null && !applied.isSuccess()) {
+                    player.displayClientMessage(applied.getMessage().withStyle(ChatFormatting.RED), false);
+                    return false;
+                }
+            }
+        }
+
+        if (chunkCompat.claimCount(team) > 0) {
+            return true;
+        }
+
+        ClaimExpansionPlanner.ExpansionPlan fallbackPlan = ClaimExpansionPlanner.plan(
+                desiredRecord,
+                chunkCompat.claimedChunks(team),
+                allowedClaimCount(desiredRecord),
+                FCWServerConfig.MAX_CLAIM_RANGE.get(),
+                pos -> chunkCompat.isClaimedByOtherTeam(team, pos),
+                FCWServerConfig.SMART_CLAIM_EXPANSION.get(),
+                FCWServerConfig.REQUIRE_CONNECTED_CLAIMS.get()
+        );
+        if (!fallbackPlan.success()) {
+            player.displayClientMessage(Component.translatable(fallbackPlan.failureKey()).withStyle(ChatFormatting.RED), false);
+            return false;
+        }
+        if (!applyStructuredClaims(player, level, team, fallbackPlan, desiredRecord, rollbackRecord)) {
+            return false;
+        }
+        return chunkCompat.claimCount(team) > 0;
+    }
+
+    public void syncClaimOutline(ServerPlayer player) {
+        Team team = teamCompat.resolveFactionTeam(player).orElse(null);
+        if (team == null) {
+            FCWNetwork.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), ClaimOutlineMessage.clear());
+            return;
+        }
+
+        FCWSavedData.CoreRecord record = data(player.server).getCore(team.getId()).orElse(null);
+        List<Long> chunks = currentClaimChunkLongs(team, player.level().dimension());
+        FCWNetwork.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
+                chunks.isEmpty()
+                        ? ClaimOutlineMessage.clear()
+                        : new ClaimOutlineMessage(
+                                player.level().dimension().location().toString(),
+                                record == null ? player.blockPosition().getY() : record.pos().getY(),
+                                chunks
+                        ));
+    }
+
+    public void syncClaimOutlines(Team team, MinecraftServer server) {
+        if (team == null || server == null) {
+            return;
+        }
+        for (ServerPlayer player : teamCompat.onlineMembers(team)) {
+            syncClaimOutline(player);
+        }
+    }
+
+    private void dropUpgradeLoot(ServerLevel level, BlockPos pos, int upgradeCount) {
+        int remaining = Math.max(0, upgradeCount);
         while (remaining > 0) {
             int stackSize = Math.min(remaining, FCWItems.CLAIM_CATALYST.get().getMaxStackSize());
             Containers.dropItemStack(level,
-                    record.pos().getX() + 0.5D,
-                    record.pos().getY() + 0.8D,
-                    record.pos().getZ() + 0.5D,
+                    pos.getX() + 0.5D,
+                    pos.getY() + 0.8D,
+                    pos.getZ() + 0.5D,
                     new ItemStack(FCWItems.CLAIM_CATALYST.get(), stackSize));
             remaining -= stackSize;
         }
@@ -887,8 +1246,39 @@ public class CoreManager {
         }
     }
 
+    private void spawnSwordClashParticles(ServerLevel level, BlockPos pos, long time, double intensity) {
+        double sweep = 0.32D + (0.1D * Math.sin(time * 0.12D));
+        double arcHeight = pos.getY() + 1.08D + (Math.sin(time * 0.18D) * 0.08D);
+        for (int side = -1; side <= 1; side += 2) {
+            double x = pos.getX() + 0.5D + (side * sweep);
+            double z = pos.getZ() + 0.5D - (side * sweep * 0.65D);
+            level.sendParticles(ParticleTypes.SWEEP_ATTACK, x, arcHeight, z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            level.sendParticles(new DustParticleOptions(new Vector3f(side < 0 ? 0.92F : 0.24F, side < 0 ? 0.32F : 0.64F, 1.0F), 0.85F),
+                    x, arcHeight, z, scaledCount(2, intensity), 0.05D, 0.04D, 0.05D, 0.005D);
+        }
+
+        level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
+                pos.getX() + 0.5D, pos.getY() + 1.16D, pos.getZ() + 0.5D,
+                scaledCount(5, intensity), 0.14D, 0.12D, 0.14D, 0.04D);
+        level.sendParticles(ParticleTypes.CRIT,
+                pos.getX() + 0.5D, pos.getY() + 1.12D, pos.getZ() + 0.5D,
+                scaledCount(7, intensity), 0.18D, 0.12D, 0.18D, 0.08D);
+    }
+
     private int scaledCount(int base, double scale) {
         return Math.max(1, Mth.ceil(base * scale));
+    }
+
+    private int effectiveUpgradeCount(int upgradeCount) {
+        return hasUpgradeCap() ? Math.min(upgradeCount, maxCoreUpgrades()) : upgradeCount;
+    }
+
+    private boolean hasUpgradeCap() {
+        return FCWServerConfig.MAX_CORE_UPGRADES.get() >= 0;
+    }
+
+    private int maxCoreUpgrades() {
+        return FCWServerConfig.MAX_CORE_UPGRADES.get();
     }
 
     private net.minecraft.sounds.SoundEvent resolveConfiguredSound(String id, net.minecraft.sounds.SoundEvent fallback) {
@@ -925,5 +1315,20 @@ public class CoreManager {
         public void close() {
             MUTATION_SCOPE.remove();
         }
+    }
+
+    public void syncRecipesToPlayer(ServerPlayer player, BlockPos corePos) {
+        Team team = teamCompat.resolveFactionTeam(player).orElse(null);
+        if (team == null) return;
+        FCWSavedData savedData = data(player.server);
+        int craftedCount = savedData.raidCraftCount(team.getId());
+        List<ItemCostHelper.CostEntry> base = ItemCostHelper.parseEntries(FCWServerConfig.RAID_BASE_COST.get());
+        List<ItemCostHelper.CostEntry> scaling = ItemCostHelper.parseEntries(FCWServerConfig.RAID_SCALING_COST.get());
+        Map<Integer, List<ItemCostHelper.CostEntry>> exact = ItemCostHelper.parseLevelEntries(FCWServerConfig.RAID_EXACT_LEVEL_COSTS.get());
+        List<FactionCoreMenu.RecipeCost> current = ItemCostHelper.sorted(ItemCostHelper.resolveRaidCosts(base, scaling, exact, craftedCount))
+                .stream().map(e -> new FactionCoreMenu.RecipeCost(e.item(), e.count())).toList();
+        List<FactionCoreMenu.RecipeCost> next = ItemCostHelper.sorted(ItemCostHelper.resolveRaidCosts(base, scaling, exact, craftedCount + 1))
+                .stream().map(e -> new FactionCoreMenu.RecipeCost(e.item(), e.count())).toList();
+        FCWNetwork.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new CoreRecipeSyncMessage(corePos, current, next));
     }
 }

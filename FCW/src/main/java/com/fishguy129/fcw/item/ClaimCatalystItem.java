@@ -1,10 +1,19 @@
 package com.fishguy129.fcw.item;
 
 import com.fishguy129.fcw.FCWMod;
+import com.fishguy129.fcw.config.FCWServerConfig;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.Level;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 // Faction upgrade item
 public class ClaimCatalystItem extends Item {
@@ -22,5 +31,12 @@ public class ClaimCatalystItem extends Item {
             return InteractionResult.FAIL;
         }
         return InteractionResult.sidedSuccess(context.getLevel().isClientSide());
+    }
+
+    @Override
+    public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltip, TooltipFlag flag) {
+        tooltip.add(Component.translatable("item.fcw.claim_catalyst.tip.title").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
+        tooltip.add(Component.translatable("item.fcw.claim_catalyst.tip.use").withStyle(ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("item.fcw.claim_catalyst.tip.value", FCWServerConfig.CLAIMS_PER_UPGRADE.get()).withStyle(ChatFormatting.GOLD));
     }
 }

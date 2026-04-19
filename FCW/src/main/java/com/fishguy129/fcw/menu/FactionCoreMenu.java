@@ -30,8 +30,8 @@ public class FactionCoreMenu extends AbstractContainerMenu {
     private final BlockPos corePos;
     private final String teamName;
     private final ContainerData data;
-    private final List<RecipeCost> currentRaidCosts;
-    private final List<RecipeCost> nextRaidCosts;
+    private List<RecipeCost> currentRaidCosts;
+    private List<RecipeCost> nextRaidCosts;
     private final List<ItemStack> hologramItems;
 
     public static FactionCoreMenu fromBuffer(int containerId, Inventory inventory, FriendlyByteBuf buffer) {
@@ -78,9 +78,6 @@ public class FactionCoreMenu extends AbstractContainerMenu {
     public int nextRaidCostScale() { return data.get(DATA_RAID_COST); }
     public boolean canRelocate() { return data.get(DATA_LEADER) > 0; }
 
-    public List<RecipeCost> currentRaidCosts() { return currentRaidCosts; }
-    public List<RecipeCost> nextRaidCosts() { return nextRaidCosts; }
-    public List<RecipeCost> scalingRaidCosts() { return nextRaidCosts; }
     public List<ItemStack> hologramItems() { return copyStacks(hologramItems); }
 
     public void setHologramItem(int index, ItemStack stack) {
@@ -95,11 +92,22 @@ public class FactionCoreMenu extends AbstractContainerMenu {
     }
 
     public List<ItemStack> currentRaidRecipe() {
-        return stacksFor(currentRaidCosts);
+        return currentRaidCosts.stream()
+                .map(cost -> new ItemStack(cost.item(), cost.count()))
+                .sorted(Comparator.comparing(ItemStack::getDescriptionId))
+                .toList();
     }
 
     public List<ItemStack> nextRaidRecipe() {
-        return stacksFor(nextRaidCosts);
+        return nextRaidCosts.stream()
+                .map(cost -> new ItemStack(cost.item(), cost.count()))
+                .sorted(Comparator.comparing(ItemStack::getDescriptionId))
+                .toList();
+    }
+
+    public void updateRecipes(List<RecipeCost> current, List<RecipeCost> next) {
+        this.currentRaidCosts = List.copyOf(current);
+        this.nextRaidCosts = List.copyOf(next);
     }
 
     public ItemStack currentRaidResult() {
@@ -176,13 +184,5 @@ public class FactionCoreMenu extends AbstractContainerMenu {
         return List.copyOf(copied);
     }
 
-    public record RecipeCost(Item item, int count) {
-        public int baseCount() {
-            return count;
-        }
-
-        public int scalingCount() {
-            return count;
-        }
-    }
+    public record RecipeCost(Item item, int count) {}
 }

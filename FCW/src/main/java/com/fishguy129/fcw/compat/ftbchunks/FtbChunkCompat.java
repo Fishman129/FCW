@@ -4,6 +4,7 @@ import dev.ftb.mods.ftbchunks.api.ClaimResult;
 import dev.ftb.mods.ftbchunks.api.ClaimedChunk;
 import dev.ftb.mods.ftbchunks.api.ChunkTeamData;
 import dev.ftb.mods.ftbchunks.api.FTBChunksAPI;
+import dev.ftb.mods.ftbchunks.data.ClaimedChunkManagerImpl;
 import dev.ftb.mods.ftbchunks.data.ChunkTeamDataImpl;
 import dev.ftb.mods.ftblibrary.math.ChunkDimPos;
 import dev.ftb.mods.ftbteams.api.Team;
@@ -54,7 +55,12 @@ public class FtbChunkCompat {
     }
 
     public Collection<? extends ClaimedChunk> claimedChunks(Team team) {
-        return getData(team).getClaimedChunks();
+        if (!isLoaded() || team == null) {
+            return List.of();
+        }
+        return FTBChunksAPI.api().getManager()
+                .getClaimedChunksByTeam(chunk -> chunk.getTeamData().getTeam().getId().equals(team.getId()))
+                .getOrDefault(team.getId(), Collections.emptyList());
     }
 
     public List<ClaimedChunk> claimedChunks(UUID teamId) {
@@ -68,7 +74,7 @@ public class FtbChunkCompat {
     }
 
     public int claimCount(Team team) {
-        return getData(team).getClaimedChunks().size();
+        return claimedChunks(team).size();
     }
 
     public int currentExtraClaimChunks(Team team) {
@@ -107,7 +113,22 @@ public class FtbChunkCompat {
     public void clearClaims(CommandSourceStack source, Team team) {
         // Copy first so we are not mutating the collection we are iterating over.
         for (ClaimedChunk chunk : List.copyOf(claimedChunks(team))) {
-            getData(team).unclaim(source, chunk.getPos(), false);
+            chunk.getTeamData().unclaim(source, chunk.getPos(), false);
+        }
+    }
+
+    public void clearClaims(CommandSourceStack source, UUID teamId) {
+        for (ClaimedChunk chunk : List.copyOf(claimedChunks(teamId))) {
+            chunk.getTeamData().unclaim(source, chunk.getPos(), false);
+        }
+    }
+
+    public void purgeTeamData(Team team) {
+        if (!isLoaded() || team == null) {
+            return;
+        }
+        if (FTBChunksAPI.api().getManager() instanceof ClaimedChunkManagerImpl impl) {
+            impl.deleteTeam(team);
         }
     }
 

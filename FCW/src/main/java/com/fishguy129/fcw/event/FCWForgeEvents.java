@@ -43,6 +43,7 @@ public class FCWForgeEvents {
         TeamEvent.PLAYER_JOINED_PARTY.register(this::playerJoinedParty);
         TeamEvent.PLAYER_LEFT_PARTY.register(this::playerLeftParty);
         TeamEvent.PLAYER_CHANGED.register(this::playerChangedTeam);
+        TeamEvent.DELETED.register(this::teamDeleted);
     }
 
     private CompoundEventResult<ClaimResult> beforeClaim(net.minecraft.commands.CommandSourceStack source, dev.ftb.mods.ftbchunks.api.ClaimedChunk claimedChunk) {
@@ -80,15 +81,44 @@ public class FCWForgeEvents {
     private void playerJoinedParty(PlayerJoinedPartyTeamEvent event) {
         MinecraftServer server = event.getPlayer().server;
         FCWSavedData.get(server).setMemberJoinTick(event.getTeam().getId(), event.getPlayer().getUUID(), server.overworld().getGameTime());
+        FCWMod.CORE_MANAGER.syncClaimOutline(event.getPlayer());
     }
 
     private void playerLeftParty(PlayerLeftPartyTeamEvent event) {
-        FCWSavedData.get(FCWMod.TEAM_COMPAT.server()).removeMemberJoinTick(event.getTeam().getId(), event.getPlayerId());
+        MinecraftServer server = FCWMod.TEAM_COMPAT.server();
+        if (server == null) {
+            return;
+        }
+        FCWSavedData.get(server).removeMemberJoinTick(event.getTeam().getId(), event.getPlayerId());
         FCWMod.RAID_MANAGER.handleTeamChange(event.getPlayerId());
+        ServerPlayer player = server == null ? null : server.getPlayerList().getPlayer(event.getPlayerId());
+        if (player != null) {
+            FCWMod.CORE_MANAGER.syncClaimOutline(player);
+        }
     }
 
     private void playerChangedTeam(PlayerChangedTeamEvent event) {
         FCWMod.RAID_MANAGER.handleTeamChange(event.getPlayerId());
+        MinecraftServer server = FCWMod.TEAM_COMPAT.server();
+        ServerPlayer player = server == null ? null : server.getPlayerList().getPlayer(event.getPlayerId());
+        if (player != null) {
+            FCWMod.CORE_MANAGER.syncClaimOutline(player);
+        }
+    }
+
+    private void teamDeleted(TeamEvent event) {
+        MinecraftServer server = FCWMod.TEAM_COMPAT.server();
+        Team deletedTeam = event.getTeam();
+        if (server == null || deletedTeam == null) {
+            return;
+        }
+
+        FCWMod.RAID_MANAGER.cancelRaid(server, deletedTeam.getId());
+        FCWMod.CORE_MANAGER.dropPackedCoreForDisband(server, deletedTeam);
+        FCWMod.CORE_MANAGER.resetCore(server.createCommandSourceStack(), deletedTeam);
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            FCWMod.CORE_MANAGER.syncClaimOutline(player);
+        }
     }
 
     @SubscribeEvent
@@ -103,6 +133,7 @@ public class FCWForgeEvents {
     public void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             FCWMod.RAID_MANAGER.syncRaidsToPlayer(player);
+            FCWMod.CORE_MANAGER.syncClaimOutline(player);
         }
     }
 

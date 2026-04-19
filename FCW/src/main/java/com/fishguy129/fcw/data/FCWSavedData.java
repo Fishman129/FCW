@@ -153,8 +153,22 @@ public class FCWSavedData extends SavedData {
         }
     }
 
+    public void clearTeamMeta(UUID teamId) {
+        boolean changed = false;
+        if (raidCraftCounts.remove(teamId) != null) {
+            changed = true;
+        }
+        if (memberJoinTimes.remove(teamId) != null) {
+            changed = true;
+        }
+        if (changed) {
+            setDirty();
+        }
+    }
+
     public record CoreRecord(UUID teamId, ResourceKey<Level> dimension, BlockPos pos, boolean active, boolean protectionSuspended,
-                             boolean packed, int upgradeCount, long lastRelocationTick, List<ItemStack> hologramItems) {
+                             boolean packed, int upgradeCount, long lastRelocationTick, List<ItemStack> hologramItems,
+                             List<Long> savedClaimChunks) {
         // These with* helpers keep call sites readable without making the record itself mutable.
         public CompoundTag toTag() {
             CompoundTag tag = new CompoundTag();
@@ -173,6 +187,13 @@ public class FCWSavedData extends SavedData {
                 hologramList.add(itemTag);
             }
             tag.put("hologramItems", hologramList);
+            ListTag savedClaims = new ListTag();
+            for (Long chunkLong : normalizedSavedClaimChunks(savedClaimChunks)) {
+                CompoundTag chunkTag = new CompoundTag();
+                chunkTag.putLong("chunk", chunkLong);
+                savedClaims.add(chunkTag);
+            }
+            tag.put("savedClaimChunks", savedClaims);
             return tag;
         }
 
@@ -186,28 +207,34 @@ public class FCWSavedData extends SavedData {
                     tag.getBoolean("packed"),
                     tag.getInt("upgradeCount"),
                     tag.getLong("lastRelocationTick"),
-                    readHologramItems(tag.getList("hologramItems", Tag.TAG_COMPOUND))
+                    readHologramItems(tag.getList("hologramItems", Tag.TAG_COMPOUND)),
+                    readSavedClaimChunks(tag.getList("savedClaimChunks", Tag.TAG_COMPOUND))
             );
         }
 
         public CoreRecord withPos(ResourceKey<Level> newDimension, BlockPos newPos, long gameTick) {
-            return new CoreRecord(teamId, newDimension, newPos, active, protectionSuspended, false, upgradeCount, gameTick, normalizedHologramItems(hologramItems));
+            return new CoreRecord(teamId, newDimension, newPos, active, protectionSuspended, false, upgradeCount, gameTick,
+                    normalizedHologramItems(hologramItems), normalizedSavedClaimChunks(savedClaimChunks));
         }
 
         public CoreRecord withUpgradeCount(int newUpgradeCount) {
-            return new CoreRecord(teamId, dimension, pos, active, protectionSuspended, packed, newUpgradeCount, lastRelocationTick, normalizedHologramItems(hologramItems));
+            return new CoreRecord(teamId, dimension, pos, active, protectionSuspended, packed, newUpgradeCount, lastRelocationTick,
+                    normalizedHologramItems(hologramItems), normalizedSavedClaimChunks(savedClaimChunks));
         }
 
         public CoreRecord withActive(boolean newActive) {
-            return new CoreRecord(teamId, dimension, pos, newActive, protectionSuspended, packed, upgradeCount, lastRelocationTick, normalizedHologramItems(hologramItems));
+            return new CoreRecord(teamId, dimension, pos, newActive, protectionSuspended, packed, upgradeCount, lastRelocationTick,
+                    normalizedHologramItems(hologramItems), normalizedSavedClaimChunks(savedClaimChunks));
         }
 
         public CoreRecord withProtectionSuspended(boolean suspended) {
-            return new CoreRecord(teamId, dimension, pos, active, suspended, packed, upgradeCount, lastRelocationTick, normalizedHologramItems(hologramItems));
+            return new CoreRecord(teamId, dimension, pos, active, suspended, packed, upgradeCount, lastRelocationTick,
+                    normalizedHologramItems(hologramItems), normalizedSavedClaimChunks(savedClaimChunks));
         }
 
         public CoreRecord withPacked(boolean packedState, long gameTick) {
-            return new CoreRecord(teamId, dimension, pos, active, protectionSuspended, packedState, upgradeCount, gameTick, normalizedHologramItems(hologramItems));
+            return new CoreRecord(teamId, dimension, pos, active, protectionSuspended, packedState, upgradeCount, gameTick,
+                    normalizedHologramItems(hologramItems), normalizedSavedClaimChunks(savedClaimChunks));
         }
 
         public CoreRecord withHologramItem(int slot, ItemStack stack) {
@@ -215,7 +242,13 @@ public class FCWSavedData extends SavedData {
             if (slot >= 0 && slot < updated.size()) {
                 updated.set(slot, stack.copy());
             }
-            return new CoreRecord(teamId, dimension, pos, active, protectionSuspended, packed, upgradeCount, lastRelocationTick, normalizedHologramItems(updated));
+            return new CoreRecord(teamId, dimension, pos, active, protectionSuspended, packed, upgradeCount, lastRelocationTick,
+                    normalizedHologramItems(updated), normalizedSavedClaimChunks(savedClaimChunks));
+        }
+
+        public CoreRecord withSavedClaimChunks(Collection<Long> chunkLongs) {
+            return new CoreRecord(teamId, dimension, pos, active, protectionSuspended, packed, upgradeCount, lastRelocationTick,
+                    normalizedHologramItems(hologramItems), normalizedSavedClaimChunks(chunkLongs));
         }
 
         private static List<ItemStack> readHologramItems(ListTag listTag) {
@@ -224,6 +257,14 @@ public class FCWSavedData extends SavedData {
                 items.add(ItemStack.of(listTag.getCompound(i)));
             }
             return normalizedHologramItems(items);
+        }
+
+        private static List<Long> readSavedClaimChunks(ListTag listTag) {
+            List<Long> chunks = new ArrayList<>();
+            for (int i = 0; i < listTag.size(); i++) {
+                chunks.add(listTag.getCompound(i).getLong("chunk"));
+            }
+            return normalizedSavedClaimChunks(chunks);
         }
 
         public static List<ItemStack> normalizedHologramItems(List<ItemStack> items) {
@@ -236,6 +277,19 @@ public class FCWSavedData extends SavedData {
                     normalized.add(copy);
                 } else {
                     normalized.add(ItemStack.EMPTY);
+                }
+            }
+            return List.copyOf(normalized);
+        }
+
+        public static List<Long> normalizedSavedClaimChunks(Collection<Long> chunks) {
+            if (chunks == null || chunks.isEmpty()) {
+                return List.of();
+            }
+            LinkedHashSet<Long> normalized = new LinkedHashSet<>();
+            for (Long chunk : chunks) {
+                if (chunk != null) {
+                    normalized.add(chunk);
                 }
             }
             return List.copyOf(normalized);

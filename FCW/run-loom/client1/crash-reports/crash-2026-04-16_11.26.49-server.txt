@@ -1,0 +1,106 @@
+---- Minecraft Crash Report ----
+// Why did you do that?
+
+Time: 2026-04-16 11:26:49
+Description: Exception in server tick loop
+
+java.lang.NullPointerException: Exception in server tick loop
+	at java.util.Objects.requireNonNull(Objects.java:233) ~[?:?] {}
+	at java.util.Optional.of(Optional.java:113) ~[?:?] {}
+	at dev.ftb.mods.ftbteams.data.TeamManagerImpl.getTeamByID(TeamManagerImpl.java:103) ~[ftb-teams-forge-2001.3.1.jar%23209!/:2001.3.1] {re:classloading}
+	at com.fishguy129.fcw.compat.ftbteams.FtbTeamCompat.resolveTeamById(FtbTeamCompat.java:50) ~[%23204!/:?] {re:classloading}
+	at com.fishguy129.fcw.core.CoreManager.tick(CoreManager.java:448) ~[%23204!/:?] {re:classloading}
+	at com.fishguy129.fcw.event.FCWForgeEvents.onServerTick(FCWForgeEvents.java:111) ~[%23204!/:?] {re:classloading}
+	at com.fishguy129.fcw.event.__FCWForgeEvents_onServerTick_ServerTickEvent.invoke(.dynamic) ~[%23204!/:?] {re:classloading,pl:eventbus:B}
+	at net.minecraftforge.eventbus.ASMEventHandler.invoke(ASMEventHandler.java:73) ~[eventbus-6.0.5.jar%23111!/:?] {}
+	at net.minecraftforge.eventbus.EventBus.post(EventBus.java:315) ~[eventbus-6.0.5.jar%23111!/:?] {}
+	at net.minecraftforge.eventbus.EventBus.post(EventBus.java:296) ~[eventbus-6.0.5.jar%23111!/:?] {}
+	at net.minecraftforge.event.ForgeEventFactory.onPostServerTick(ForgeEventFactory.java:950) ~[forge-1.20.1-47.1.47-minecraft-merged-1.20.1-loom.mappings.1_20_1.layered+hash.40359-v2-forge-1.20.1-47.1.47.jar%23198%23205!/:?] {re:classloading}
+	at net.minecraft.server.MinecraftServer.tickServer(MinecraftServer.java:835) ~[forge-1.20.1-47.1.47-minecraft-merged-1.20.1-loom.mappings.1_20_1.layered+hash.40359-v2-forge-1.20.1-47.1.47.jar%23199!/:?] {re:classloading,pl:accesstransformer:B,pl:unprotect:A}
+	at net.minecraft.client.server.IntegratedServer.tickServer(IntegratedServer.java:89) ~[forge-1.20.1-47.1.47-minecraft-merged-1.20.1-loom.mappings.1_20_1.layered+hash.40359-v2-forge-1.20.1-47.1.47.jar%23199!/:?] {re:classloading,pl:unprotect:A,pl:runtimedistcleaner:A}
+	at net.minecraft.server.MinecraftServer.runServer(MinecraftServer.java:661) ~[forge-1.20.1-47.1.47-minecraft-merged-1.20.1-loom.mappings.1_20_1.layered+hash.40359-v2-forge-1.20.1-47.1.47.jar%23199!/:?] {re:classloading,pl:accesstransformer:B,pl:unprotect:A}
+	at net.minecraft.server.MinecraftServer.method_29739(MinecraftServer.java:251) ~[forge-1.20.1-47.1.47-minecraft-merged-1.20.1-loom.mappings.1_20_1.layered+hash.40359-v2-forge-1.20.1-47.1.47.jar%23199!/:?] {re:classloading,pl:accesstransformer:B,pl:unprotect:A}
+	at java.lang.Thread.run(Thread.java:1583) ~[?:?] {}
+
+
+A detailed walkthrough of the error, its code path and all known details is as follows:
+---------------------------------------------------------------------------------------
+
+-- System Details --
+Details:
+	Minecraft Version: 1.20.1
+	Minecraft Version ID: 1.20.1
+	Operating System: Windows 11 (amd64) version 10.0
+	Java Version: 21.0.10, Oracle Corporation
+	Java VM Version: Java HotSpot(TM) 64-Bit Server VM (mixed mode, sharing), Oracle Corporation
+	Memory: 947500216 bytes (903 MiB) / 2537553920 bytes (2420 MiB) up to 8510242816 bytes (8116 MiB)
+	CPUs: 32
+	Processor Vendor: GenuineIntel
+	Processor Name: Intel(R) Core(TM) i9-14900HX
+	Identifier: Intel64 Family 6 Model 183 Stepping 1
+	Microarchitecture: unknown
+	Frequency (GHz): 2.42
+	Number of physical packages: 1
+	Number of physical CPUs: 24
+	Number of logical CPUs: 32
+	Graphics card #0 name: NVIDIA GeForce RTX 4070 Laptop GPU
+	Graphics card #0 vendor: NVIDIA (0x10de)
+	Graphics card #0 VRAM (MB): 4095.00
+	Graphics card #0 deviceId: 0x2860
+	Graphics card #0 versionInfo: DriverVersion=32.0.15.9144
+	Graphics card #1 name: Intel(R) UHD Graphics
+	Graphics card #1 vendor: Intel Corporation (0x8086)
+	Graphics card #1 VRAM (MB): 2048.00
+	Graphics card #1 deviceId: 0xa788
+	Graphics card #1 versionInfo: DriverVersion=32.0.101.7079
+	Memory slot #0 capacity (MB): 16384.00
+	Memory slot #0 clockSpeed (GHz): 5.60
+	Memory slot #0 type: Unknown
+	Memory slot #1 capacity (MB): 16384.00
+	Memory slot #1 clockSpeed (GHz): 5.60
+	Memory slot #1 type: Unknown
+	Virtual memory max (MB): 64913.41
+	Virtual memory used (MB): 37611.62
+	Swap memory total (MB): 32456.70
+	Swap memory used (MB): 561.84
+	JVM Flags: 0 total; 
+	Server Running: true
+	Player Count: 0 / 8; []
+	Data Packs: vanilla, mod:mixinextras (incompatible), mod:forge, mod:architectury (incompatible), mod:ftblibrary (incompatible), mod:ftbteams (incompatible), mod:ftbchunks (incompatible), mod:fcw
+	Enabled Feature Flags: minecraft:vanilla
+	World Generation: Stable
+	Type: Integrated Server (map_client.txt)
+	Is Modded: Definitely; Client brand changed to 'forge'; Server brand changed to 'forge'
+	Launched Version: MOD_DEV
+	ModLauncher: 10.0.9+10.0.9+main.dcd20f30
+	ModLauncher launch target: forgeclientuserdev
+	ModLauncher naming: mcp
+	ModLauncher services: 
+		mixin-patched-0.8.5.12.jar mixin PLUGINSERVICE 
+		eventbus-6.0.5.jar eventbus PLUGINSERVICE 
+		fmlloader-1.20.1-47.1.47.jar slf4jfixer PLUGINSERVICE 
+		fmlloader-1.20.1-47.1.47.jar object_holder_definalize PLUGINSERVICE 
+		fmlloader-1.20.1-47.1.47.jar runtime_enum_extender PLUGINSERVICE 
+		unprotect-1.2.0.jar unprotect PLUGINSERVICE 
+		fmlloader-1.20.1-47.1.47.jar capability_token_subclass PLUGINSERVICE 
+		accesstransformers-8.0.4.jar accesstransformer PLUGINSERVICE 
+		fmlloader-1.20.1-47.1.47.jar runtimedistcleaner PLUGINSERVICE 
+		modlauncher-10.0.9.jar mixin TRANSFORMATIONSERVICE 
+		modlauncher-10.0.9.jar fml TRANSFORMATIONSERVICE 
+		modlauncher-10.0.9.jar ArchitecturyMixinRemapperInjector TRANSFORMATIONSERVICE 
+	FML Language Providers: 
+		minecraft@1.0
+		lowcodefml@null
+		javafml@null
+	Mod List: 
+		forge-1.20.1-47.1.47-minecraft-merged-1.20.1-loom.|Minecraft                     |minecraft                     |1.20.1              |DONE      |Manifest: NOSIGNATURE
+		mixinextras-forge-0.4.1.jar                       |MixinExtras                   |mixinextras                   |0.4.1               |DONE      |Manifest: NOSIGNATURE
+		                                                  |Forge                         |forge                         |47.1.47             |DONE      |Manifest: NOSIGNATURE
+		architectury-forge-9.1.12.jar                     |Architectury                  |architectury                  |9.1.12              |DONE      |Manifest: NOSIGNATURE
+		ftb-library-forge-2001.2.9.jar                    |FTB Library                   |ftblibrary                    |2001.2.9            |DONE      |Manifest: NOSIGNATURE
+		ftb-teams-forge-2001.3.1.jar                      |FTB Teams                     |ftbteams                      |2001.3.1            |DONE      |Manifest: NOSIGNATURE
+		ftb-chunks-forge-2001.3.7.jar                     |FTB Chunks                    |ftbchunks                     |2001.3.7            |DONE      |Manifest: NOSIGNATURE
+		main                                              |Factions: Claims & Warfare    |fcw                           |1.0.0               |DONE      |Manifest: NOSIGNATURE
+	Crash Report UUID: 29cc2d11-0671-4101-8fc4-447139bdb104
+	FML: 47.1
+	Forge: net.minecraftforge:47.1.47

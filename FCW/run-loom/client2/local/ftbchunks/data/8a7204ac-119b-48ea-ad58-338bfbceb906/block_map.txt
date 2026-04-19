@@ -15,6 +15,7 @@
 #19C8D3 minecraft:dark_oak_planks
 #5E9420 minecraft:deepslate
 #9BA6B0 minecraft:deepslate_iron_ore
+#9E0209 minecraft:deepslate_lapis_ore
 #BED665 minecraft:diorite
 #80497A minecraft:dirt
 #4FA7D0 minecraft:dirt_path

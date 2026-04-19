@@ -2,7 +2,9 @@
 	id: "2a717c8f-118e-3474-bc2d-d61b924015ff"
 	type: "player"
 	player_name: "Dev1"
-	ranks: { }
+	ranks: {
+		2a717c8f-118e-3474-bc2d-d61b924015ff: "owner"
+	}
 	properties: {
 		"ftbteams:display_name": "Dev1"
 		"ftbteams:description": ""

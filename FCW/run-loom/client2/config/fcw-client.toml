@@ -10,6 +10,14 @@
 	#Opacity multiplier for the world-space core radius ring.
 	#Range: 0.05 ~ 1.0
 	coreZoneRingAlpha = 0.65
+	#Render the owner-only in-world line outline for your faction's claimed chunks.
+	enableOwnClaimOutline = true
+	#Opacity multiplier for the owner-only claimed chunk outline.
+	#Range: 0.05 ~ 1.0
+	ownClaimOutlineAlpha = 0.9
+	#Maximum distance in blocks where nearby claim-outline fence segments fade in.
+	#Range: 1.0 ~ 64.0
+	ownClaimOutlineRevealDistance = 7.0
 
 [raidVisuals]
 	#Render red/blue raid highlights around active participants.

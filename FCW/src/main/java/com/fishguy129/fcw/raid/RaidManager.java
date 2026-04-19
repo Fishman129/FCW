@@ -15,6 +15,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.ItemStack;
@@ -120,8 +121,9 @@ public class RaidManager {
             return false;
         });
 
-        List<ServerPlayer> attackers = validAttackers(level, attacker, raid);
-        List<ServerPlayer> defenders = validDefenders(level, defender, raid.corePos(), raid);
+        Set<Long> defendedChunks = defendedChunkArea(level, defender, raid.corePos());
+        List<ServerPlayer> attackers = validAttackers(level, attacker, raid, defendedChunks);
+        List<ServerPlayer> defenders = validDefenders(level, defender, raid, defendedChunks);
         attackers.forEach(player -> player.addEffect(new MobEffectInstance(MobEffects.GLOWING, 40, 0, true, false, true)));
         defenders.forEach(player -> player.addEffect(new MobEffectInstance(MobEffects.GLOWING, 40, 0, true, false, true)));
 
@@ -147,26 +149,37 @@ public class RaidManager {
         }
     }
 
-    private List<ServerPlayer> validAttackers(ServerLevel level, Team attacker, FCWSavedData.RaidRecord raid) {
+    private List<ServerPlayer> validAttackers(ServerLevel level, Team attacker, FCWSavedData.RaidRecord raid, Set<Long> defendedChunks) {
         if (level == null || attacker == null) {
             return List.of();
         }
-        int radius = FCWServerConfig.RAID_PRESENCE_RADIUS.get();
         return teamCompat.onlineMembers(attacker).stream()
                 .filter(player -> player.level().dimension().equals(level.dimension()))
                 .filter(player -> !raid.eliminatedAttackers().contains(player.getUUID()))
-                .filter(player -> player.blockPosition().closerThan(raid.corePos(), radius))
+                .filter(player -> defendedChunks.contains(ChunkPos.asLong(player.chunkPosition().x, player.chunkPosition().z)))
                 .toList();
     }
 
-    private List<ServerPlayer> validDefenders(ServerLevel level, Team defender, BlockPos corePos, FCWSavedData.RaidRecord raid) {
+    private List<ServerPlayer> validDefenders(ServerLevel level, Team defender, FCWSavedData.RaidRecord raid, Set<Long> defendedChunks) {
         if (level == null || defender == null) return List.of();
-        int radius = FCWServerConfig.RAID_PRESENCE_RADIUS.get();
         return teamCompat.onlineMembers(defender).stream()
                 .filter(player -> player.level().dimension().equals(level.dimension()))
-                .filter(player -> !raid.eliminatedDefenders().contains(player.getUUID()))  // <-- add this
-                .filter(player -> player.blockPosition().closerThan(corePos, radius))
+                .filter(player -> !raid.eliminatedDefenders().contains(player.getUUID()))
+                .filter(player -> defendedChunks.contains(ChunkPos.asLong(player.chunkPosition().x, player.chunkPosition().z)))
                 .toList();
+    }
+
+    private Set<Long> defendedChunkArea(ServerLevel level, Team defender, BlockPos corePos) {
+        Set<Long> claimedChunks = new HashSet<>();
+        if (level != null && defender != null) {
+            chunkCompat.claimedChunks(defender).forEach(chunk -> {
+                if (chunk.getPos().dimension().equals(level.dimension())) {
+                    claimedChunks.add(ChunkPos.asLong(chunk.getPos().x(), chunk.getPos().z()));
+                }
+            });
+        }
+        claimedChunks.add(ChunkPos.asLong(new ChunkPos(corePos).x, new ChunkPos(corePos).z));
+        return claimedChunks;
     }
 
     private void finishRaid(MinecraftServer server, FCWSavedData.RaidRecord raid, boolean success) {
@@ -178,7 +191,15 @@ public class RaidManager {
         if (success && defender != null && defenderCore != null) {
             ServerLevel defenderLevel = server.getLevel(defenderCore.dimension());
             if (defenderLevel != null) {
-                coreManager.destroyCoreForRaid(defenderLevel, defenderCore, FCWServerConfig.RAID_DROP_UPGRADES_ON_SUCCESS.get());
+                int droppedUpgrades = 0;
+                if (FCWServerConfig.RAID_DROP_UPGRADES_ON_SUCCESS.get()) {
+                    droppedUpgrades = Mth.clamp(
+                            Mth.ceil(defenderCore.upgradeCount() * FCWServerConfig.RAID_UPGRADE_DROP_MULTIPLIER.get()),
+                            0,
+                            defenderCore.upgradeCount()
+                    );
+                }
+                coreManager.destroyCoreForRaid(defenderLevel, defenderCore, droppedUpgrades);
             }
             coreManager.resetCore(server.createCommandSourceStack(), defender.getId());
             coreManager.clearFactionClaims(server.createCommandSourceStack(), defender);
@@ -367,7 +388,7 @@ public class RaidManager {
     }
 
     private void clearRaidStatus(MinecraftServer server, FCWSavedData.RaidRecord raid) {
-        RaidStatusMessage message = new RaidStatusMessage(raid.dimension().location().toString(), raid.corePos(), false, "", "", 0L, 0L, List.of(), List.of(), false, false);
+        RaidStatusMessage message = new RaidStatusMessage(raid.dimension().location().toString(), raid.corePos(), false, "", "", 0L, 0L, List.of(), List.of(), List.of(), false, false);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             FCWNetwork.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), message);
         }
@@ -376,8 +397,10 @@ public class RaidManager {
     private void sendRaidStatus(ServerPlayer player, MinecraftServer server, FCWSavedData.RaidRecord raid) {
         Team attacker = teamCompat.resolveTeamById(raid.attackerTeamId()).orElse(null);
         Team defender = teamCompat.resolveTeamById(raid.defenderTeamId()).orElse(null);
-        List<UUID> attackers = validAttackers(server.getLevel(raid.dimension()), attacker, raid).stream().map(ServerPlayer::getUUID).toList();
-        List<UUID> defenders = validDefenders(server.getLevel(raid.dimension()), defender, raid.corePos(), raid).stream().map(ServerPlayer::getUUID).toList();
+        ServerLevel level = server.getLevel(raid.dimension());
+        Set<Long> defendedChunks = defendedChunkArea(level, defender, raid.corePos());
+        List<UUID> attackers = validAttackers(level, attacker, raid, defendedChunks).stream().map(ServerPlayer::getUUID).toList();
+        List<UUID> defenders = validDefenders(level, defender, raid, defendedChunks).stream().map(ServerPlayer::getUUID).toList();
         Team viewerTeam = teamCompat.resolveFactionTeam(player).orElse(null);
         RaidStatusMessage message = new RaidStatusMessage(
                 raid.dimension().location().toString(),
@@ -389,6 +412,7 @@ public class RaidManager {
                 raid.requiredTicks(),
                 attackers,
                 defenders,
+                List.copyOf(defendedChunks),
                 viewerTeam != null && viewerTeam.getId().equals(raid.attackerTeamId()),
                 viewerTeam != null && viewerTeam.getId().equals(raid.defenderTeamId())
         );

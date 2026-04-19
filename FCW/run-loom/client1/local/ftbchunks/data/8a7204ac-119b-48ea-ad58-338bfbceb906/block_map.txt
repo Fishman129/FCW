@@ -33,6 +33,7 @@
 #AB1C58 minecraft:peony
 #BB7F65 minecraft:podzol
 #AFAC0D minecraft:poppy
+#CB1F3C minecraft:powder_snow
 #E6B35B minecraft:pumpkin
 #213091 minecraft:raw_copper_block
 #025439 minecraft:red_mushroom
@@ -44,6 +45,7 @@
 #872D76 minecraft:snow
 #12E6C4 minecraft:snow_block
 #FAE367 minecraft:spruce_fence
+#13F5AC minecraft:spruce_leaves
 #49DF61 minecraft:spruce_planks
 #DC3458 minecraft:stone
 #5CF3F1 minecraft:sugar_cane

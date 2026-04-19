@@ -62,6 +62,9 @@ public class FactionCoreBlockEntityRenderer implements BlockEntityRenderer<Facti
         itemRenderer.renderStatic(displayStack, ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, buffer, blockEntity.getLevel(), 0);
         poseStack.popPose();
 
+        if (raidVisual != null) {
+            renderSwordClash(blockEntity, ticks, poseStack, buffer, packedLight, packedOverlay, baseScale);
+        }
         renderOrbiters(blockEntity, raidVisual, ticks, poseStack, buffer, packedLight, packedOverlay, baseScale);
 
         if (raidVisual != null) {
@@ -109,18 +112,19 @@ public class FactionCoreBlockEntityRenderer implements BlockEntityRenderer<Facti
     private void renderOrbiters(FactionCoreBlockEntity blockEntity, ClientRaidState.RaidVisual raidVisual, float ticks, PoseStack poseStack,
                                 MultiBufferSource buffer, int packedLight, int packedOverlay, double baseScale) {
         List<ItemStack> orbiters = resolveOrbiterItems(blockEntity, raidVisual);
-        double[] heights = {1.02D, 1.16D, 1.3D};
-        float[] radii = {0.68F, 0.54F, 0.44F};
+        double[] heights = raidVisual != null ? new double[]{0.96D, 1.14D, 1.34D} : new double[]{1.02D, 1.16D, 1.3D};
+        float[] radii = raidVisual != null ? new float[]{0.82F, 0.62F, 0.46F} : new float[]{0.68F, 0.54F, 0.44F};
+        float speed = raidVisual != null ? 6.5F : 4.0F;
         for (int i = 0; i < orbiters.size(); i++) {
             renderOrbiter(blockEntity, ticks, poseStack, buffer, packedLight, packedOverlay, orbiters.get(i),
-                    i * (360F / orbiters.size()), radii[Math.min(i, radii.length - 1)], heights[Math.min(i, heights.length - 1)], baseScale);
+                    i * (360F / orbiters.size()), radii[Math.min(i, radii.length - 1)], heights[Math.min(i, heights.length - 1)], baseScale, speed);
         }
     }
 
     private void renderOrbiter(FactionCoreBlockEntity blockEntity, float ticks, PoseStack poseStack, MultiBufferSource buffer, int packedLight,
-                               int packedOverlay, ItemStack stack, float offsetDegrees, float radius, double y, double baseScale) {
+                               int packedOverlay, ItemStack stack, float offsetDegrees, float radius, double y, double baseScale, float speed) {
         poseStack.pushPose();
-        float angle = (ticks * 4F + offsetDegrees) % 360F;
+        float angle = (ticks * speed + offsetDegrees) % 360F;
         double radians = Math.toRadians(angle);
         poseStack.translate(0.5D + (Math.cos(radians) * radius), y + (Math.sin((ticks + offsetDegrees) * 0.07F) * 0.04F),
                 0.5D + (Math.sin(radians) * radius));
@@ -128,6 +132,51 @@ public class FactionCoreBlockEntityRenderer implements BlockEntityRenderer<Facti
         float scale = (float) (0.34F * baseScale);
         poseStack.scale(scale, scale, scale);
         itemRenderer.renderStatic(stack, ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, buffer, blockEntity.getLevel(), 0);
+        poseStack.popPose();
+    }
+
+    private void renderSwordClash(FactionCoreBlockEntity blockEntity, float ticks, PoseStack poseStack, MultiBufferSource buffer,
+                                  int packedLight, int packedOverlay, double baseScale) {
+        float swing = (Mth.sin(ticks * 0.35F) + 1.0F) * 0.5F;
+        float clashPulse = 1.0F - Math.abs(Mth.sin(ticks * 0.35F));
+        renderClashSword(blockEntity, poseStack, buffer, packedLight, packedOverlay, baseScale, swing, true,
+                new ItemStack(Items.NETHERITE_SWORD), ticks);
+        renderClashSword(blockEntity, poseStack, buffer, packedLight, packedOverlay, baseScale, swing, false,
+                new ItemStack(Items.DIAMOND_SWORD), ticks);
+
+        poseStack.pushPose();
+        poseStack.translate(0.5D, 3.72D + (Math.sin(ticks * 0.22F) * 0.12F), 0.5D);
+        poseStack.mulPose(Axis.YP.rotationDegrees((ticks * 10F) % 360F));
+        poseStack.mulPose(Axis.XP.rotationDegrees(86F));
+        float flashScale = (float) ((0.6F + (clashPulse * 0.42F)) * baseScale);
+        poseStack.scale(flashScale, flashScale, flashScale);
+        itemRenderer.renderStatic(new ItemStack(clashPulse > 0.72F ? Items.NETHER_STAR : Items.BLAZE_POWDER),
+                ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, buffer, blockEntity.getLevel(), 0);
+        poseStack.popPose();
+
+        poseStack.pushPose();
+        poseStack.translate(0.5D, 2.86D + (Math.sin(ticks * 0.18F) * 0.08F), 0.5D);
+        poseStack.mulPose(Axis.YP.rotationDegrees((-ticks * 7.5F) % 360F));
+        poseStack.mulPose(Axis.XP.rotationDegrees(82F));
+        poseStack.scale((float) (0.62F * baseScale), (float) (0.62F * baseScale), (float) (0.62F * baseScale));
+        itemRenderer.renderStatic(new ItemStack(Items.SHIELD), ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, buffer, blockEntity.getLevel(), 0);
+        poseStack.popPose();
+    }
+
+    private void renderClashSword(FactionCoreBlockEntity blockEntity, PoseStack poseStack, MultiBufferSource buffer, int packedLight,
+                                  int packedOverlay, double baseScale, float swing, boolean leftSide, ItemStack swordStack, float ticks) {
+        float side = leftSide ? -1.0F : 1.0F;
+        float lunge = 0.54F - (swing * 0.34F);
+        float slashTilt = 122F - (swing * 26F);
+        poseStack.pushPose();
+        poseStack.translate(0.5D + (side * lunge), 3.36D + (Math.sin((ticks * 0.24F) + (leftSide ? 0F : 1.2F)) * 0.1F),
+                0.5D + (side * 0.16F * Mth.cos(ticks * 0.19F)));
+        poseStack.mulPose(Axis.YP.rotationDegrees(leftSide ? 36F + (swing * 10F) : -36F - (swing * 10F)));
+        poseStack.mulPose(Axis.ZP.rotationDegrees(leftSide ? slashTilt : -slashTilt));
+        poseStack.mulPose(Axis.XP.rotationDegrees(82F + (swing * 6F)));
+        float scale = (float) ((1.55F + (swing * 0.28F)) * baseScale);
+        poseStack.scale(scale, scale, scale);
+        itemRenderer.renderStatic(swordStack, ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, buffer, blockEntity.getLevel(), 0);
         poseStack.popPose();
     }
 

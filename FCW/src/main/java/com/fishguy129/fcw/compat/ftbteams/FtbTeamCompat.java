@@ -47,7 +47,15 @@ public class FtbTeamCompat {
     }
 
     public Optional<Team> resolveTeamById(UUID teamId) {
-        return isLoaded() ? FTBTeamsAPI.api().getManager().getTeamByID(teamId) : Optional.empty();
+        if (!isLoaded() || teamId == null) {
+            return Optional.empty();
+        }
+
+        // FTB Teams 2001.3.1 can throw inside getTeamByID() when the team was already deleted,
+        // so resolve through the current team snapshot instead of touching that path.
+        return FTBTeamsAPI.api().getManager().getTeams().stream()
+                .filter(team -> teamId.equals(team.getId()))
+                .findFirst();
     }
 
     public boolean isLeader(Team team, UUID playerId) {

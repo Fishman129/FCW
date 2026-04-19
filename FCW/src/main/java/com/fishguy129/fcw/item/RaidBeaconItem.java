@@ -52,9 +52,12 @@ public class RaidBeaconItem extends Item {
 
     @Override
     public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltip, TooltipFlag flag) {
+        tooltip.add(Component.translatable("item.fcw.raid_beacon.tip.title").withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
+        tooltip.add(Component.translatable("item.fcw.raid_beacon.tip.use").withStyle(ChatFormatting.GRAY));
         CompoundTag tag = stack.getTag();
         if (tag != null && tag.contains(TAG_BOUND_TEAM_NAME)) {
-            tooltip.add(Component.translatable("item.fcw.raid_beacon.bound", tag.getString(TAG_BOUND_TEAM_NAME)).withStyle(ChatFormatting.GRAY));
+            tooltip.add(Component.translatable("item.fcw.raid_beacon.bound", tag.getString(TAG_BOUND_TEAM_NAME)).withStyle(ChatFormatting.GOLD));
         }
+        tooltip.add(Component.translatable("item.fcw.raid_beacon.tip.consume").withStyle(ChatFormatting.DARK_RED));
     }
 }

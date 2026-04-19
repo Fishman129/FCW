@@ -30,6 +30,41 @@ public final class ClaimExpansionPlanner {
         return deterministicPlan(coreRecord, origin, currentClaims, targetClaimCount, maxRange);
     }
 
+    public static ExpansionPlan planRestoration(FCWSavedData.CoreRecord coreRecord, Collection<? extends ClaimedChunk> existingClaims,
+                                                Collection<ChunkDimPos> savedFootprint, int targetClaimCount, int maxRange,
+                                                Predicate<ChunkDimPos> blockedPredicate, boolean requireConnectedClaims) {
+        ChunkPos origin = new ChunkPos(coreRecord.pos());
+        Set<ChunkDimPos> currentClaims = existingClaims.stream().map(ClaimedChunk::getPos).collect(HashSet::new, Set::add, Set::addAll);
+        LinkedHashSet<ChunkDimPos> preferred = new LinkedHashSet<>();
+        for (ChunkDimPos pos : savedFootprint) {
+            if (pos.dimension().equals(coreRecord.dimension())) {
+                preferred.add(pos);
+            }
+        }
+
+        if (preferred.isEmpty()) {
+            return adaptivePlan(coreRecord, origin, currentClaims, targetClaimCount, maxRange, blockedPredicate, requireConnectedClaims);
+        }
+
+        LinkedHashSet<ChunkDimPos> desiredClaims = new LinkedHashSet<>();
+        for (ChunkDimPos pos : preferred) {
+            if (currentClaims.contains(pos) || !blockedPredicate.test(pos)) {
+                desiredClaims.add(pos);
+            }
+        }
+
+        if (desiredClaims.isEmpty()) {
+            ChunkDimPos originPos = new ChunkDimPos(coreRecord.dimension(), origin.x, origin.z);
+            if (blockedPredicate.test(originPos)) {
+                return new ExpansionPlan(targetClaimCount, List.of(), List.of(), "message.fcw.claims.no_available_space");
+            }
+            desiredClaims.add(originPos);
+        }
+
+        Set<ChunkDimPos> anchoredClaims = new HashSet<>(desiredClaims);
+        return expandAdaptively(coreRecord, origin, anchoredClaims, desiredClaims, targetClaimCount, maxRange, blockedPredicate, requireConnectedClaims);
+    }
+
     private static ExpansionPlan deterministicPlan(FCWSavedData.CoreRecord coreRecord, ChunkPos origin, Set<ChunkDimPos> currentClaims,
                                                    int targetClaimCount, int maxRange) {
         List<ChunkDimPos> deterministicOrder = new ArrayList<>();
@@ -75,6 +110,14 @@ public final class ClaimExpansionPlanner {
             }
             desiredClaims.add(originPos);
         }
+
+        return expandAdaptively(coreRecord, origin, currentClaims, desiredClaims, targetClaimCount, maxRange, blockedPredicate, requireConnectedClaims);
+    }
+
+    private static ExpansionPlan expandAdaptively(FCWSavedData.CoreRecord coreRecord, ChunkPos origin, Set<ChunkDimPos> currentClaims,
+                                                  LinkedHashSet<ChunkDimPos> desiredClaims, int targetClaimCount, int maxRange,
+                                                  Predicate<ChunkDimPos> blockedPredicate, boolean requireConnectedClaims) {
+        desiredClaims = trimToTarget(desiredClaims, targetClaimCount);
 
         if (desiredClaims.size() >= targetClaimCount) {
             List<ChunkDimPos> additions = desiredClaims.stream().filter(pos -> !currentClaims.contains(pos)).toList();
@@ -122,6 +165,7 @@ public final class ClaimExpansionPlanner {
     private static ExpansionPlan fillByNearestAvailable(FCWSavedData.CoreRecord coreRecord, ChunkPos origin, Set<ChunkDimPos> currentClaims,
                                                         LinkedHashSet<ChunkDimPos> desiredClaims, int targetClaimCount, int maxRange,
                                                         Predicate<ChunkDimPos> blockedPredicate) {
+        desiredClaims = trimToTarget(desiredClaims, targetClaimCount);
         // This branch gives up on strict connectivity and just grabs the nearest safe chunks.
         for (int ring = 0; ring <= maxRange && desiredClaims.size() < targetClaimCount; ring++) {
             for (int dz = -ring; dz <= ring && desiredClaims.size() < targetClaimCount; dz++) {
@@ -158,6 +202,20 @@ public final class ClaimExpansionPlanner {
             neighbors.add(new ChunkDimPos(coreRecord.dimension(), x, z));
         }
         return neighbors;
+    }
+
+    private static LinkedHashSet<ChunkDimPos> trimToTarget(LinkedHashSet<ChunkDimPos> desiredClaims, int targetClaimCount) {
+        if (targetClaimCount <= 0 || desiredClaims.size() <= targetClaimCount) {
+            return desiredClaims;
+        }
+        LinkedHashSet<ChunkDimPos> trimmed = new LinkedHashSet<>();
+        for (ChunkDimPos pos : desiredClaims) {
+            if (trimmed.size() >= targetClaimCount) {
+                break;
+            }
+            trimmed.add(pos);
+        }
+        return trimmed;
     }
 
     public record ExpansionPlan(int targetClaimCount, List<ChunkDimPos> desiredClaims, List<ChunkDimPos> newClaims, String failureKey) {

@@ -10,6 +10,9 @@ public final class FCWClientConfig {
     public static final ForgeConfigSpec.DoubleValue CORE_HOLOGRAM_SCALE;
     public static final ForgeConfigSpec.BooleanValue ENABLE_CORE_ZONE_RING;
     public static final ForgeConfigSpec.DoubleValue CORE_ZONE_RING_ALPHA;
+    public static final ForgeConfigSpec.BooleanValue ENABLE_OWN_CLAIM_OUTLINE;
+    public static final ForgeConfigSpec.DoubleValue OWN_CLAIM_OUTLINE_ALPHA;
+    public static final ForgeConfigSpec.DoubleValue OWN_CLAIM_OUTLINE_REVEAL_DISTANCE;
     public static final ForgeConfigSpec.BooleanValue ENABLE_RAID_PLAYER_HIGHLIGHTS;
     public static final ForgeConfigSpec.BooleanValue ENABLE_RAID_HUD;
     public static final ForgeConfigSpec.DoubleValue RAID_HUD_SCALE;
@@ -30,6 +33,12 @@ public final class FCWClientConfig {
                 .define("enableCoreZoneRing", true);
         CORE_ZONE_RING_ALPHA = builder.comment("Opacity multiplier for the world-space core radius ring.")
                 .defineInRange("coreZoneRingAlpha", 0.65D, 0.05D, 1.0D);
+        ENABLE_OWN_CLAIM_OUTLINE = builder.comment("Render the owner-only in-world line outline for your faction's claimed chunks.")
+                .define("enableOwnClaimOutline", true);
+        OWN_CLAIM_OUTLINE_ALPHA = builder.comment("Opacity multiplier for the owner-only claimed chunk outline.")
+                .defineInRange("ownClaimOutlineAlpha", 0.9D, 0.05D, 1.0D);
+        OWN_CLAIM_OUTLINE_REVEAL_DISTANCE = builder.comment("Maximum distance in blocks where nearby claim-outline fence segments fade in.")
+                .defineInRange("ownClaimOutlineRevealDistance", 7.0D, 1.0D, 64.0D);
         builder.pop();
 
         builder.push("raidVisuals");

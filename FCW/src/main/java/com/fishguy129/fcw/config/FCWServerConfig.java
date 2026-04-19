@@ -13,6 +13,7 @@ public final class FCWServerConfig {
     public static final ForgeConfigSpec.DoubleValue CORE_AMBIENT_EFFECT_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue CORE_RAID_EFFECT_MULTIPLIER;
     public static final ForgeConfigSpec.IntValue CLAIMS_PER_UPGRADE;
+    public static final ForgeConfigSpec.IntValue MAX_CORE_UPGRADES;
     public static final ForgeConfigSpec.IntValue MAX_CLAIM_RANGE;
     public static final ForgeConfigSpec.BooleanValue SMART_CLAIM_EXPANSION;
     public static final ForgeConfigSpec.BooleanValue REQUIRE_CONNECTED_CLAIMS;
@@ -22,6 +23,7 @@ public final class FCWServerConfig {
     public static final ForgeConfigSpec.BooleanValue RAID_FORCE_UNCLAIM_ON_SUCCESS;
     public static final ForgeConfigSpec.BooleanValue RAID_SUSPEND_PROTECTION_ON_SUCCESS;
     public static final ForgeConfigSpec.BooleanValue RAID_DROP_UPGRADES_ON_SUCCESS;
+    public static final ForgeConfigSpec.DoubleValue RAID_UPGRADE_DROP_MULTIPLIER;
     public static final ForgeConfigSpec.IntValue RAID_BASE_DURATION_SECONDS;
     public static final ForgeConfigSpec.IntValue RAID_PRESENCE_RADIUS;
     public static final ForgeConfigSpec.IntValue RAID_LOGOUT_GRACE_SECONDS;
@@ -64,9 +66,11 @@ public final class FCWServerConfig {
         builder.comment(
                 "Structured claim growth settings.",
                 "claimsPerUpgrade is the amount of additional claim chunks unlocked by each upgrade level.",
+                "maxCoreUpgrades limits how many upgrades a core can hold. Set it to -1 for no cap.",
                 "smartClaimExpansion lets FCW route new claims around blocked/enemy chunks instead of failing on a rigid pattern.",
                 "requireConnectedClaims keeps the final FCW territory as one connected shape when smart expansion is enabled.");
         CLAIMS_PER_UPGRADE = builder.defineInRange("claimsPerUpgrade", 4, 1, 512);
+        MAX_CORE_UPGRADES = builder.defineInRange("maxCoreUpgrades", -1, -1, Integer.MAX_VALUE);
         MAX_CLAIM_RANGE = builder.defineInRange("maxClaimRange", 8, 0, 128);
         SMART_CLAIM_EXPANSION = builder.define("smartClaimExpansion", true);
         REQUIRE_CONNECTED_CLAIMS = builder.define("requireConnectedClaims", true);
@@ -79,11 +83,13 @@ public final class FCWServerConfig {
                 "Raid flow settings.",
                 "Successful raids are intended to collapse the defending core and strip its territory.",
                 "dropUpgradesOnSuccess controls whether invested claim upgrades are dropped back into the world as claim catalysts.",
+                "upgradeDropMultiplier controls how much of the invested upgrade count drops on a successful raid.",
                 "worldSoundEvent and worldSoundVolume control the extra raid ambience emitted by the core itself.");
         ALLOW_ALLIED_RAIDING = builder.define("allowAlliedRaiding", false);
         RAID_FORCE_UNCLAIM_ON_SUCCESS = builder.define("forceUnclaimOnSuccess", true);
         RAID_SUSPEND_PROTECTION_ON_SUCCESS = builder.define("suspendProtectionOnSuccess", false);
         RAID_DROP_UPGRADES_ON_SUCCESS = builder.define("dropUpgradesOnSuccess", true);
+        RAID_UPGRADE_DROP_MULTIPLIER = builder.defineInRange("upgradeDropMultiplier", 1.0D, 0.0D, 1.0D);
         RAID_BASE_DURATION_SECONDS = builder.defineInRange("baseDurationSeconds", 300, 10, Integer.MAX_VALUE);
         RAID_PRESENCE_RADIUS = builder.defineInRange("presenceRadius", 16, 4, 96);
         RAID_LOGOUT_GRACE_SECONDS = builder.defineInRange("logoutGraceSeconds", 20, 0, Integer.MAX_VALUE);

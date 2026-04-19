@@ -7,7 +7,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 
 // Central packet registration
 public final class FCWNetwork {
-    private static final String PROTOCOL = "1";
+    private static final String PROTOCOL = "3";
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(FCWMod.MOD_ID, "main"),
             () -> PROTOCOL,
@@ -24,5 +24,7 @@ public final class FCWNetwork {
         CHANNEL.registerMessage(nextId++, CoreActionMessage.class, CoreActionMessage::encode, CoreActionMessage::decode, CoreActionMessage::handle);
         CHANNEL.registerMessage(nextId++, RaidStatusMessage.class, RaidStatusMessage::encode, RaidStatusMessage::decode, RaidStatusMessage::handle);
         CHANNEL.registerMessage(nextId++, HologramLoadoutMessage.class, HologramLoadoutMessage::encode, HologramLoadoutMessage::decode, HologramLoadoutMessage::handle);
+        CHANNEL.registerMessage(nextId++, CoreRecipeSyncMessage.class, CoreRecipeSyncMessage::encode, CoreRecipeSyncMessage::decode, CoreRecipeSyncMessage::handle);
+        CHANNEL.registerMessage(nextId++, ClaimOutlineMessage.class, ClaimOutlineMessage::encode, ClaimOutlineMessage::decode, ClaimOutlineMessage::handle);
     }
 }

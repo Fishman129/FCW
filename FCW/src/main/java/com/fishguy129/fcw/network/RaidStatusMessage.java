@@ -15,7 +15,7 @@ import java.util.function.Supplier;
 // Server-to-client raid snapshot used by the HUD, world overlays, and core renderer.
 public record RaidStatusMessage(String dimensionId, BlockPos corePos, boolean active, String attackerName, String defenderName,
                                 long progressTicks, long requiredTicks, List<UUID> attackerIds, List<UUID> defenderIds,
-                                boolean localPlayerAttacker, boolean localPlayerDefender) {
+                                List<Long> defendedChunkLongs, boolean localPlayerAttacker, boolean localPlayerDefender) {
     public static void encode(RaidStatusMessage message, net.minecraft.network.FriendlyByteBuf buffer) {
         buffer.writeUtf(message.dimensionId);
         buffer.writeBlockPos(message.corePos);
@@ -27,6 +27,7 @@ public record RaidStatusMessage(String dimensionId, BlockPos corePos, boolean ac
             buffer.writeVarLong(message.requiredTicks);
             writeUuidList(buffer, message.attackerIds);
             writeUuidList(buffer, message.defenderIds);
+            writeLongList(buffer, message.defendedChunkLongs);
             buffer.writeBoolean(message.localPlayerAttacker);
             buffer.writeBoolean(message.localPlayerDefender);
         }
@@ -37,7 +38,7 @@ public record RaidStatusMessage(String dimensionId, BlockPos corePos, boolean ac
         BlockPos corePos = buffer.readBlockPos();
         boolean active = buffer.readBoolean();
         if (!active) {
-            return new RaidStatusMessage(dimensionId, corePos, false, "", "", 0L, 0L, List.of(), List.of(), false, false);
+            return new RaidStatusMessage(dimensionId, corePos, false, "", "", 0L, 0L, List.of(), List.of(), List.of(), false, false);
         }
         return new RaidStatusMessage(
                 dimensionId,
@@ -49,6 +50,7 @@ public record RaidStatusMessage(String dimensionId, BlockPos corePos, boolean ac
                 buffer.readVarLong(),
                 readUuidList(buffer),
                 readUuidList(buffer),
+                readLongList(buffer),
                 buffer.readBoolean(),
                 buffer.readBoolean()
         );
@@ -73,6 +75,7 @@ public record RaidStatusMessage(String dimensionId, BlockPos corePos, boolean ac
                     message.requiredTicks,
                     message.attackerIds,
                     message.defenderIds,
+                    message.defendedChunkLongs,
                     message.localPlayerAttacker,
                     message.localPlayerDefender
             );
@@ -95,5 +98,21 @@ public record RaidStatusMessage(String dimensionId, BlockPos corePos, boolean ac
             ids.add(buffer.readUUID());
         }
         return ids;
+    }
+
+    private static void writeLongList(net.minecraft.network.FriendlyByteBuf buffer, List<Long> values) {
+        buffer.writeVarInt(values.size());
+        for (Long value : values) {
+            buffer.writeLong(value);
+        }
+    }
+
+    private static List<Long> readLongList(net.minecraft.network.FriendlyByteBuf buffer) {
+        int size = buffer.readVarInt();
+        List<Long> values = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            values.add(buffer.readLong());
+        }
+        return values;
     }
 }

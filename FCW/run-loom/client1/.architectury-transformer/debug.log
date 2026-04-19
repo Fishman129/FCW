@@ -3,7 +3,7 @@
 [Architectury Transformer DEBUG] Provided 106 classpath jar(s):
 [Architectury Transformer DEBUG]  - C:\Users\joabc\.gradle\caches\fabric-loom\1.20.1\forge\1.20.1-47.1.47\client-extra.jar
 [Architectury Transformer DEBUG]  - C:\Users\joabc\.gradle\caches\modules-2\files-2.1\dev.architectury\architectury-injectables\1.0.10\62db2a366d662606d1b23ad02ccc3212ed37ec3\architectury-injectables-1.0.10.jar
-[Architectury Transformer DEBUG]  - C:\Users\joabc\.gradle\caches\modules-2\files-2.1\net.fabricmc\fabric-loader\0.19.1\3ae125a72904202dad22ff260479a20fa71df1f8\fabric-loader-0.19.1.jar
+[Architectury Transformer DEBUG]  - C:\Users\joabc\.gradle\caches\modules-2\files-2.1\net.fabricmc\fabric-loader\0.19.2\cc647a5b22dbc49b9a3267cebcee25fc4882b108\fabric-loader-0.19.2.jar
 [Architectury Transformer DEBUG]  - C:\Users\joabc\.gradle\caches\modules-2\files-2.1\org.jetbrains\annotations\24.1.0\7af6a669488450c4a07c2c3254e2151df42d7d04\annotations-24.1.0.jar
 [Architectury Transformer DEBUG]  - C:\Users\joabc\.gradle\caches\modules-2\files-2.1\com.google.code.findbugs\jsr305\3.0.2\25ea2e8b0c338a877313bd4672d3fe056ea78f0d\jsr305-3.0.2.jar
 [Architectury Transformer DEBUG]  - C:\Users\joabc\.gradle\caches\modules-2\files-2.1\net.minecraftforge\fmlearlydisplay\1.20.1-47.1.47\b2b9a41bed58b24f27b4d7852cfaff69d675d489\fmlearlydisplay-1.20.1-47.1.47.jar
@@ -107,6 +107,6 @@
 [Architectury Transformer DEBUG]  - C:\mc-mods\FCWModdingEnviroment\FCW\.gradle\loom-cache\remapped_mods\loom_mappings_1_20_1_layered_hash_40359_v2_forge_1_20_1_47_1_47_forge\dev\ftb\mods\ftb-library-forge\2001.2.9\ftb-library-forge-2001.2.9.jar
 [Architectury Transformer DEBUG]  - C:\mc-mods\FCWModdingEnviroment\FCW\.gradle\loom-cache\remapped_mods\loom_mappings_1_20_1_layered_hash_40359_v2_forge_1_20_1_47_1_47_forge\dev\ftb\mods\ftb-teams-forge\2001.3.1\ftb-teams-forge-2001.3.1.jar
 [Architectury Transformer DEBUG]  - C:\mc-mods\FCWModdingEnviroment\FCW\.gradle\loom-cache\remapped_mods\loom_mappings_1_20_1_layered_hash_40359_v2_forge_1_20_1_47_1_47_forge\dev\ftb\mods\ftb-chunks-forge\2001.3.7\ftb-chunks-forge-2001.3.7.jar
-[Architectury Transformer] Read classpath in 1.431 s
+[Architectury Transformer] Read classpath in 1.269 s
 [Architectury Transformer DEBUG] Classpath entry [C:\mc-mods\FCWModdingEnviroment\FCW\build\classes\java\main] contains packages: com.fishguy129.fcw.network, com.fishguy129.fcw.compat.ftbchunks, com.fishguy129.fcw.raid, com.fishguy129.fcw.block, com.fishguy129.fcw.data, com.fishguy129.fcw.util, com.fishguy129.fcw.event, com.fishguy129.fcw, com.fishguy129.fcw.compat.ftbteams, com.fishguy129.fcw.menu, com.fishguy129.fcw.registry, com.fishguy129.fcw.blockentity, com.fishguy129.fcw.claims, com.fishguy129.fcw.client, com.fishguy129.fcw.core, com.fishguy129.fcw.command, com.fishguy129.fcw.item, com.fishguy129.fcw.config
 [Architectury Transformer DEBUG] Classpath entry [C:\mc-mods\FCWModdingEnviroment\FCW\build\resources\main] contains packages: 

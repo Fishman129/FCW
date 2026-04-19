@@ -19,7 +19,8 @@ public final class ClientRaidState {
     }
 
     public static void update(ResourceLocation dimensionId, BlockPos corePos, String attackerName, String defenderName, long progressTicks, long requiredTicks,
-                              Collection<UUID> attackerIds, Collection<UUID> defenderIds, boolean localPlayerAttacker, boolean localPlayerDefender) {
+                              Collection<UUID> attackerIds, Collection<UUID> defenderIds, Collection<Long> defendedChunkLongs,
+                              boolean localPlayerAttacker, boolean localPlayerDefender) {
         ACTIVE_RAIDS.put(key(dimensionId, corePos), new RaidVisual(
                 dimensionId,
                 corePos.immutable(),
@@ -29,6 +30,7 @@ public final class ClientRaidState {
                 requiredTicks,
                 Set.copyOf(attackerIds),
                 Set.copyOf(defenderIds),
+                Set.copyOf(defendedChunkLongs),
                 localPlayerAttacker,
                 localPlayerDefender
         ));
@@ -64,7 +66,7 @@ public final class ClientRaidState {
     }
 
     public record RaidVisual(ResourceLocation dimensionId, BlockPos corePos, String attackerName, String defenderName, long progressTicks,
-                             long requiredTicks, Set<UUID> attackerIds, Set<UUID> defenderIds,
+                             long requiredTicks, Set<UUID> attackerIds, Set<UUID> defenderIds, Set<Long> defendedChunkLongs,
                              boolean localPlayerAttacker, boolean localPlayerDefender) {
         public long remainingTicks() {
             return Math.max(0L, requiredTicks - progressTicks);
@@ -84,6 +86,10 @@ public final class ClientRaidState {
 
         public boolean isDefender(UUID entityId) {
             return defenderIds.contains(entityId);
+        }
+
+        public boolean isInsideDefendedChunks(int chunkX, int chunkZ) {
+            return defendedChunkLongs.contains(net.minecraft.world.level.ChunkPos.asLong(chunkX, chunkZ));
         }
 
         public String oppositionName() {

@@ -38,7 +38,10 @@ public record CoreActionMessage(BlockPos corePos, BlockPos targetPos, Action act
             }
 
             switch (message.action) {
-                case CRAFT_RAID_ITEM -> FCWMod.CORE_MANAGER.tryCraftRaidItem(context.getSender(), message.corePos);
+                case CRAFT_RAID_ITEM -> {
+                    FCWMod.CORE_MANAGER.tryCraftRaidItem(context.getSender(), message.corePos);
+                    FCWMod.CORE_MANAGER.syncRecipesToPlayer(context.getSender(), message.corePos);
+                }
                 case PACK_CORE -> FCWMod.CORE_MANAGER.packCore(context.getSender(), message.corePos);
             }
         });

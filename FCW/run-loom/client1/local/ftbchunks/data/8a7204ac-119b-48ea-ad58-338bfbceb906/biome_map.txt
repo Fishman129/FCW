@@ -5,6 +5,7 @@
 #3DE minecraft:deep_ocean
 #010 minecraft:forest
 #508 minecraft:frozen_peaks
+#286 minecraft:grove
 #4B0 minecraft:jungle
 #79A minecraft:lukewarm_ocean
 #4F1 minecraft:ocean
