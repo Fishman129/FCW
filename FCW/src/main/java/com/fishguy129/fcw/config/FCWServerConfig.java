@@ -44,6 +44,7 @@ public final class FCWServerConfig {
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> RAID_EXACT_LEVEL_COSTS;
     public static final ForgeConfigSpec.BooleanValue UNCLAIM_ALL_ON_CORE_PACK;
     public static final ForgeConfigSpec.IntValue CORE_RELOCATION_COOLDOWN_SECONDS;
+    public static final ForgeConfigSpec.BooleanValue BORDER_FENCE_VISIBLE_TO_ENEMIES;
 
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
@@ -68,7 +69,8 @@ public final class FCWServerConfig {
                 "claimsPerUpgrade is the amount of additional claim chunks unlocked by each upgrade level.",
                 "maxCoreUpgrades limits how many upgrades a core can hold. Set it to -1 for no cap.",
                 "smartClaimExpansion lets FCW route new claims around blocked/enemy chunks instead of failing on a rigid pattern.",
-                "requireConnectedClaims keeps the final FCW territory as one connected shape when smart expansion is enabled.");
+                "requireConnectedClaims keeps the final FCW territory as one connected shape when smart expansion is enabled.",
+                "borderFenceVisibleToEnemies controls whether non-team players can see your claim border fence.");
         CLAIMS_PER_UPGRADE = builder.defineInRange("claimsPerUpgrade", 4, 1, 512);
         MAX_CORE_UPGRADES = builder.defineInRange("maxCoreUpgrades", -1, -1, Integer.MAX_VALUE);
         MAX_CLAIM_RANGE = builder.defineInRange("maxClaimRange", 8, 0, 128);
@@ -76,6 +78,7 @@ public final class FCWServerConfig {
         REQUIRE_CONNECTED_CLAIMS = builder.define("requireConnectedClaims", true);
         BLOCK_MANUAL_FTB_CLAIMS = builder.define("blockManualFtbClaims", true);
         ADMIN_BYPASS_STRUCTURED_CLAIMS = builder.define("adminBypassStructuredClaims", false);
+        BORDER_FENCE_VISIBLE_TO_ENEMIES = builder.define("borderFenceVisibleToEnemies", true);
         builder.pop();
 
         builder.push("raid");

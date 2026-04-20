@@ -26,5 +26,6 @@ public final class FCWNetwork {
         CHANNEL.registerMessage(nextId++, HologramLoadoutMessage.class, HologramLoadoutMessage::encode, HologramLoadoutMessage::decode, HologramLoadoutMessage::handle);
         CHANNEL.registerMessage(nextId++, CoreRecipeSyncMessage.class, CoreRecipeSyncMessage::encode, CoreRecipeSyncMessage::decode, CoreRecipeSyncMessage::handle);
         CHANNEL.registerMessage(nextId++, ClaimOutlineMessage.class, ClaimOutlineMessage::encode, ClaimOutlineMessage::decode, ClaimOutlineMessage::handle);
+        CHANNEL.registerMessage(nextId++, EnemyClaimOutlineMessage.class, EnemyClaimOutlineMessage::encode, EnemyClaimOutlineMessage::decode, EnemyClaimOutlineMessage::handle);
     }
 }

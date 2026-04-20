@@ -35,6 +35,7 @@ import org.joml.Matrix4f;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -80,6 +81,7 @@ public class FCWClientEvents {
     public void onLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         ClientRaidState.clear();
         ClientClaimOutlineState.clear();
+        ClientEnemyClaimOutlineState.clear();
         CLAIM_SEGMENT_VISIBILITY.clear();
         clearRaidParticipantOutlines(Minecraft.getInstance());
         animatedClaimOutline = null;
@@ -155,6 +157,7 @@ public class FCWClientEvents {
         }
 
         renderOwnedClaimOutline(fillBuffer, poseStack, minecraft.player);
+        renderEnemyClaimOutlines(fillBuffer, poseStack, minecraft.player);
 
         if (FCWClientConfig.ENABLE_RAID_PLAYER_HIGHLIGHTS.get()) {
             for (Player player : minecraft.level.players()) {
@@ -340,6 +343,206 @@ public class FCWClientEvents {
         }
 
         CLAIM_SEGMENT_VISIBILITY.entrySet().removeIf(entry -> entry.getValue() <= CLAIM_OUTLINE_MIN_SEGMENT_VISIBILITY);
+    }
+
+    private void renderEnemyClaimOutlines(VertexConsumer fillBuffer, PoseStack poseStack, LocalPlayer localPlayer) {
+        List<ClientEnemyClaimOutlineState.EnemyOutline> enemyOutlines = ClientEnemyClaimOutlineState.all();
+        if (enemyOutlines.isEmpty() || localPlayer.level() == null) {
+            return;
+        }
+
+        ResourceLocation currentDimension = localPlayer.level().dimension().location();
+        ChunkPos playerChunk = localPlayer.chunkPosition();
+        Vec3 playerPos = localPlayer.position();
+
+        double revealDistance = Math.max(2.0D, FCWClientConfig.OWN_CLAIM_OUTLINE_REVEAL_DISTANCE.get());
+        double outerRevealDistance = revealDistance + Math.max(CLAIM_OUTLINE_FADE_BAND_MIN, revealDistance * CLAIM_OUTLINE_FADE_BAND_RATIO);
+        int chunkRadius = Math.max(2, Mth.ceil((outerRevealDistance + 16.0D) / 16.0D) + 1);
+
+        float pulse = 0.992F + 0.008F * Mth.sin((localPlayer.level().getGameTime() + Minecraft.getInstance().getFrameTime()) * 0.018F);
+        int baseAlpha = Mth.clamp((int) (255F * FCWClientConfig.OWN_CLAIM_OUTLINE_ALPHA.get().floatValue() * pulse), 0, 255);
+        if (baseAlpha <= 0) {
+            return;
+        }
+
+        long now = Util.getMillis();
+        float deltaSeconds = Mth.clamp((now - lastClaimAnimationMillis) / 1000.0F, 0.0F, 0.20F);
+
+        for (ClientEnemyClaimOutlineState.EnemyOutline outline : enemyOutlines) {
+            if (!outline.dimensionId().equals(currentDimension)) {
+                continue;
+            }
+
+            Set<Long> chunkLongs = outline.chunkLongsView();
+            if (chunkLongs.isEmpty()) {
+                continue;
+            }
+
+            double wallBaseY = outline.coreY() + 0.08D;
+
+            for (Long chunkLong : chunkLongs) {
+                ChunkPos chunkPos = new ChunkPos(chunkLong);
+                if (Math.max(Math.abs(chunkPos.x - playerChunk.x), Math.abs(chunkPos.z - playerChunk.z)) > chunkRadius) {
+                    continue;
+                }
+
+                if (!chunkLongs.contains(ChunkPos.asLong(chunkPos.x, chunkPos.z - 1))) {
+                    renderEnemyClaimBoundary(fillBuffer, poseStack,
+                            chunkPos.getMinBlockX(), chunkPos.getMinBlockZ(),
+                            chunkPos.getMaxBlockX() + 1D, chunkPos.getMinBlockZ(),
+                            baseAlpha, wallBaseY, playerPos.x, playerPos.z,
+                            revealDistance, outerRevealDistance, deltaSeconds);
+                }
+                if (!chunkLongs.contains(ChunkPos.asLong(chunkPos.x + 1, chunkPos.z))) {
+                    renderEnemyClaimBoundary(fillBuffer, poseStack,
+                            chunkPos.getMaxBlockX() + 1D, chunkPos.getMinBlockZ(),
+                            chunkPos.getMaxBlockX() + 1D, chunkPos.getMaxBlockZ() + 1D,
+                            baseAlpha, wallBaseY, playerPos.x, playerPos.z,
+                            revealDistance, outerRevealDistance, deltaSeconds);
+                }
+                if (!chunkLongs.contains(ChunkPos.asLong(chunkPos.x, chunkPos.z + 1))) {
+                    renderEnemyClaimBoundary(fillBuffer, poseStack,
+                            chunkPos.getMaxBlockX() + 1D, chunkPos.getMaxBlockZ() + 1D,
+                            chunkPos.getMinBlockX(), chunkPos.getMaxBlockZ() + 1D,
+                            baseAlpha, wallBaseY, playerPos.x, playerPos.z,
+                            revealDistance, outerRevealDistance, deltaSeconds);
+                }
+                if (!chunkLongs.contains(ChunkPos.asLong(chunkPos.x - 1, chunkPos.z))) {
+                    renderEnemyClaimBoundary(fillBuffer, poseStack,
+                            chunkPos.getMinBlockX(), chunkPos.getMaxBlockZ() + 1D,
+                            chunkPos.getMinBlockX(), chunkPos.getMinBlockZ(),
+                            baseAlpha, wallBaseY, playerPos.x, playerPos.z,
+                            revealDistance, outerRevealDistance, deltaSeconds);
+                }
+            }
+        }
+    }
+
+    private void renderEnemyClaimBoundary(VertexConsumer fillBuffer, PoseStack poseStack,
+                                          double startX, double startZ, double endX, double endZ,
+                                          int baseAlpha, double baseY,
+                                          double playerX, double playerZ,
+                                          double revealDistance, double outerRevealDistance,
+                                          float deltaSeconds) {
+        double edgeLength = Math.max(Math.abs(endX - startX), Math.abs(endZ - startZ));
+        int segments = Math.max(1, Mth.ceil(edgeLength / CLAIM_SEGMENT_LENGTH));
+
+        for (int segment = 0; segment < segments; segment++) {
+            double segmentStartProgress = segment / (double) segments;
+            double segmentEndProgress = (segment + 1) / (double) segments;
+
+            double segmentStartX = Mth.lerp(segmentStartProgress, startX, endX);
+            double segmentStartZ = Mth.lerp(segmentStartProgress, startZ, endZ);
+            double segmentEndX = Mth.lerp(segmentEndProgress, startX, endX);
+            double segmentEndZ = Mth.lerp(segmentEndProgress, startZ, endZ);
+
+            float reveal = edgeRevealFactor(playerX, playerZ, segmentStartX, segmentStartZ, segmentEndX, segmentEndZ, revealDistance, outerRevealDistance);
+            int segmentAlpha = Mth.clamp((int) (baseAlpha * reveal), 0, 255);
+            if (segmentAlpha <= 0) {
+                continue;
+            }
+
+            renderEnemyWallSegment(fillBuffer, poseStack, segmentStartX, segmentStartZ, segmentEndX, segmentEndZ, baseY, segmentAlpha);
+        }
+    }
+
+    private void renderEnemyWallSegment(VertexConsumer fillBuffer, PoseStack poseStack,
+                                        double startX, double startZ, double endX, double endZ,
+                                        double baseY, int alpha) {
+        boolean alongX = Math.abs(endX - startX) >= Math.abs(endZ - startZ);
+
+        double trimmedStartX = startX;
+        double trimmedStartZ = startZ;
+        double trimmedEndX = endX;
+        double trimmedEndZ = endZ;
+
+        if (alongX) {
+            if (endX >= startX) {
+                trimmedStartX += CLAIM_POST_TRIM;
+                trimmedEndX -= CLAIM_POST_TRIM;
+            } else {
+                trimmedStartX -= CLAIM_POST_TRIM;
+                trimmedEndX += CLAIM_POST_TRIM;
+            }
+        } else {
+            if (endZ >= startZ) {
+                trimmedStartZ += CLAIM_POST_TRIM;
+                trimmedEndZ -= CLAIM_POST_TRIM;
+            } else {
+                trimmedStartZ -= CLAIM_POST_TRIM;
+                trimmedEndZ += CLAIM_POST_TRIM;
+            }
+        }
+
+        boolean hasTrimmedRails = alongX
+                ? Math.abs(trimmedEndX - trimmedStartX) > 0.12D
+                : Math.abs(trimmedEndZ - trimmedStartZ) > 0.12D;
+
+        renderEnemyWallPost(fillBuffer, poseStack, startX, startZ, baseY, alpha);
+        renderEnemyWallPost(fillBuffer, poseStack, endX, endZ, baseY, alpha);
+
+        if (!hasTrimmedRails) {
+            return;
+        }
+
+        renderSolidBeam(fillBuffer, poseStack,
+                trimmedStartX, trimmedStartZ, trimmedEndX, trimmedEndZ,
+                baseY + 0.28D,
+                baseY + 0.40D,
+                CLAIM_RAIL_HALF_THICKNESS - 0.005D,
+                alpha,
+                0.38F, 0.12F, 0.10F);
+
+        renderSolidBeam(fillBuffer, poseStack,
+                trimmedStartX, trimmedStartZ, trimmedEndX, trimmedEndZ,
+                baseY + 0.88D,
+                baseY + 1.07D,
+                CLAIM_RAIL_HALF_THICKNESS,
+                alpha,
+                0.48F, 0.14F, 0.12F);
+
+        renderSolidBeam(fillBuffer, poseStack,
+                trimmedStartX, trimmedStartZ, trimmedEndX, trimmedEndZ,
+                baseY + 1.48D,
+                baseY + 1.66D,
+                CLAIM_RAIL_HALF_THICKNESS - 0.01D,
+                alpha,
+                0.42F, 0.13F, 0.11F);
+    }
+
+    private void renderEnemyWallPost(VertexConsumer fillBuffer, PoseStack poseStack,
+                                     double x, double z, double baseY, int alpha) {
+        double minX = x - CLAIM_POST_HALF_WIDTH;
+        double maxX = x + CLAIM_POST_HALF_WIDTH;
+        double minZ = z - CLAIM_POST_HALF_WIDTH;
+        double maxZ = z + CLAIM_POST_HALF_WIDTH;
+
+        double footTop = baseY + 0.26D;
+        double postTop = baseY + CLAIM_WALL_HEIGHT - 0.16D;
+
+        renderSolidBox(fillBuffer, poseStack,
+                minX - 0.035D, baseY, minZ - 0.035D,
+                maxX + 0.035D, footTop, maxZ + 0.035D,
+                alpha,
+                0.18F, 0.06F, 0.05F);
+
+        renderSolidBox(fillBuffer, poseStack,
+                minX, footTop, minZ,
+                maxX, postTop, maxZ,
+                alpha,
+                0.44F, 0.12F, 0.10F);
+
+        renderSolidBox(fillBuffer, poseStack,
+                minX - CLAIM_POST_CAP_OVERHANG, postTop, minZ - CLAIM_POST_CAP_OVERHANG,
+                maxX + CLAIM_POST_CAP_OVERHANG, baseY + CLAIM_WALL_HEIGHT, maxZ + CLAIM_POST_CAP_OVERHANG,
+                alpha,
+                0.52F, 0.16F, 0.12F);
+
+        renderSolidBox(fillBuffer, poseStack,
+                x - 0.032D, baseY + 1.05D, z - 0.032D,
+                x + 0.032D, baseY + 1.20D, z + 0.032D,
+                alpha,
+                0.72F, 0.22F, 0.14F);
     }
 
     private void renderClaimBoundary(VertexConsumer fillBuffer, PoseStack poseStack,

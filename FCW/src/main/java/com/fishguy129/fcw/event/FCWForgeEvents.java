@@ -82,6 +82,7 @@ public class FCWForgeEvents {
         MinecraftServer server = event.getPlayer().server;
         FCWSavedData.get(server).setMemberJoinTick(event.getTeam().getId(), event.getPlayer().getUUID(), server.overworld().getGameTime());
         FCWMod.CORE_MANAGER.syncClaimOutline(event.getPlayer());
+        FCWMod.CORE_MANAGER.syncEnemyClaimOutlines(event.getPlayer());
     }
 
     private void playerLeftParty(PlayerLeftPartyTeamEvent event) {
@@ -94,6 +95,7 @@ public class FCWForgeEvents {
         ServerPlayer player = server == null ? null : server.getPlayerList().getPlayer(event.getPlayerId());
         if (player != null) {
             FCWMod.CORE_MANAGER.syncClaimOutline(player);
+            FCWMod.CORE_MANAGER.syncEnemyClaimOutlines(player);
         }
     }
 
@@ -103,6 +105,7 @@ public class FCWForgeEvents {
         ServerPlayer player = server == null ? null : server.getPlayerList().getPlayer(event.getPlayerId());
         if (player != null) {
             FCWMod.CORE_MANAGER.syncClaimOutline(player);
+            FCWMod.CORE_MANAGER.syncEnemyClaimOutlines(player);
         }
     }
 
@@ -118,6 +121,7 @@ public class FCWForgeEvents {
         FCWMod.CORE_MANAGER.resetCore(server.createCommandSourceStack(), deletedTeam);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             FCWMod.CORE_MANAGER.syncClaimOutline(player);
+            FCWMod.CORE_MANAGER.syncEnemyClaimOutlines(player);
         }
     }
 
@@ -134,6 +138,7 @@ public class FCWForgeEvents {
         if (event.getEntity() instanceof ServerPlayer player) {
             FCWMod.RAID_MANAGER.syncRaidsToPlayer(player);
             FCWMod.CORE_MANAGER.syncClaimOutline(player);
+            FCWMod.CORE_MANAGER.syncEnemyClaimOutlines(player);
         }
     }
 

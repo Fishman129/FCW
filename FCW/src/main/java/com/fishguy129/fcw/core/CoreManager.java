@@ -11,6 +11,7 @@ import com.fishguy129.fcw.data.FCWSavedData;
 import com.fishguy129.fcw.item.FactionCoreItem;
 import com.fishguy129.fcw.item.RaidBeaconItem;
 import com.fishguy129.fcw.network.ClaimOutlineMessage;
+import com.fishguy129.fcw.network.EnemyClaimOutlineMessage;
 import com.fishguy129.fcw.menu.FactionCoreMenu;
 import com.fishguy129.fcw.network.FCWNetwork;
 import com.fishguy129.fcw.network.CoreRecipeSyncMessage;
@@ -1053,6 +1054,7 @@ public class CoreManager {
     private void syncClaimState(Team team, MinecraftServer server) {
         chunkCompat.syncClaimsToClients(team, server);
         syncClaimOutlines(team, server);
+        syncEnemyClaimOutlinesToAll(server);
     }
 
     private void forceRemoveCoreState(MinecraftServer server, UUID teamId) {
@@ -1168,6 +1170,48 @@ public class CoreManager {
         }
         for (ServerPlayer player : teamCompat.onlineMembers(team)) {
             syncClaimOutline(player);
+        }
+    }
+
+    public void syncEnemyClaimOutlines(ServerPlayer player) {
+        if (!FCWServerConfig.BORDER_FENCE_VISIBLE_TO_ENEMIES.get()) {
+            FCWNetwork.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), EnemyClaimOutlineMessage.clear());
+            return;
+        }
+
+        Team playerTeam = teamCompat.resolveFactionTeam(player).orElse(null);
+        List<EnemyClaimOutlineMessage.EnemyOutline> enemyOutlines = new ArrayList<>();
+
+        for (FCWSavedData.CoreRecord record : data(player.server).allCores()) {
+            if (!record.active() || record.packed()) {
+                continue;
+            }
+            if (playerTeam != null && record.teamId().equals(playerTeam.getId())) {
+                continue;
+            }
+            Team coreTeam = teamCompat.resolveTeamById(record.teamId()).orElse(null);
+            if (coreTeam == null) {
+                continue;
+            }
+            List<Long> chunks = currentClaimChunkLongs(coreTeam, player.level().dimension());
+            if (!chunks.isEmpty()) {
+                enemyOutlines.add(new EnemyClaimOutlineMessage.EnemyOutline(
+                        player.level().dimension().location().toString(),
+                        record.pos().getY(),
+                        chunks
+                ));
+            }
+        }
+
+        FCWNetwork.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
+                enemyOutlines.isEmpty()
+                        ? EnemyClaimOutlineMessage.clear()
+                        : new EnemyClaimOutlineMessage(enemyOutlines));
+    }
+
+    public void syncEnemyClaimOutlinesToAll(MinecraftServer server) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            syncEnemyClaimOutlines(player);
         }
     }
 
