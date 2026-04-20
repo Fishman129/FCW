@@ -873,6 +873,17 @@ public class FCWClientEvents {
                 }
             }
         }
+
+        for (PlayerTeam outlineTeam : new PlayerTeam[]{attackerTeam, defenderTeam}) {
+            for (String memberName : Set.copyOf(outlineTeam.getPlayers())) {
+                boolean stillActive = minecraft.level.players().stream()
+                        .anyMatch(p -> activeParticipants.contains(p.getUUID())
+                                && p.getScoreboardName().equals(memberName));
+                if (!stillActive) {
+                    scoreboard.removePlayerFromTeam(memberName, outlineTeam);
+                }
+            }
+        }
     }
 
     private void clearRaidParticipantOutlines(Minecraft minecraft) {
