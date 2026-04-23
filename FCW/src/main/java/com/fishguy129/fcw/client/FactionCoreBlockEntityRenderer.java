@@ -22,6 +22,7 @@ import java.util.List;
 
 // Handles the floating core hologram and the extra raid readout above it.
 public class FactionCoreBlockEntityRenderer implements BlockEntityRenderer<FactionCoreBlockEntity> {
+    private static final double CORE_MODEL_HEIGHT = 2.0D;
     private final ItemRenderer itemRenderer;
     private final Font font;
 
@@ -43,7 +44,7 @@ public class FactionCoreBlockEntityRenderer implements BlockEntityRenderer<Facti
         }
 
         int visibleRadius = Math.max(1, blockEntity.getBreachRadius());
-        if (minecraft.player.distanceToSqr(blockEntity.getBlockPos().getX() + 0.5D, blockEntity.getBlockPos().getY() + 0.5D, blockEntity.getBlockPos().getZ() + 0.5D) > visibleRadius * visibleRadius) {
+        if (minecraft.player.distanceToSqr(blockEntity.getBlockPos().getX() + 0.5D, blockEntity.getBlockPos().getY() + (CORE_MODEL_HEIGHT * 0.5D), blockEntity.getBlockPos().getZ() + 0.5D) > visibleRadius * visibleRadius) {
             return;
         }
 
@@ -55,7 +56,7 @@ public class FactionCoreBlockEntityRenderer implements BlockEntityRenderer<Facti
         ItemStack displayStack = raidVisual != null ? new ItemStack(FCWItems.RAID_BEACON.get()) : new ItemStack(FCWItems.CLAIM_CATALYST.get());
 
         poseStack.pushPose();
-        poseStack.translate(0.5D, 1.26D + bob, 0.5D);
+        poseStack.translate(0.5D, (CORE_MODEL_HEIGHT + 0.26D) + bob, 0.5D);
         poseStack.mulPose(Axis.YP.rotationDegrees((ticks * 3.0F) % 360F));
         float scale = raidVisual != null ? 0.82F : 0.68F;
         poseStack.scale((float) (scale * baseScale), (float) (scale * baseScale), (float) (scale * baseScale));
@@ -78,10 +79,12 @@ public class FactionCoreBlockEntityRenderer implements BlockEntityRenderer<Facti
         String teamName = blockEntity.getTeamName().isBlank() ? "UNBOUND CORE" : blockEntity.getTeamName();
         Component stateLine = Component.literal(blockEntity.isActive() ? "CORE ONLINE" : "CORE INACTIVE");
         Component claimsLine = Component.literal("Claims " + blockEntity.getCurrentClaims());
-        Component upgradeLine = Component.literal("Upgrades " + blockEntity.getUpgradeCount() + "  Radius " + blockEntity.getBreachRadius());
+        Component upgradeLine = Component.literal("Upgrades " + blockEntity.getUpgradeCount()
+                + "  Radius " + blockEntity.getBreachRadius()
+                + "  Path " + blockEntity.getBreachPathWidth());
 
         poseStack.pushPose();
-        poseStack.translate(0.5D, 2.04D + Mth.sin((blockEntity.getLevel().getGameTime() + partialTick) * 0.07F) * 0.04F, 0.5D);
+        poseStack.translate(0.5D, (CORE_MODEL_HEIGHT + 1.04D) + Mth.sin((blockEntity.getLevel().getGameTime() + partialTick) * 0.07F) * 0.04F, 0.5D);
         poseStack.mulPose(Minecraft.getInstance().getEntityRenderDispatcher().cameraOrientation());
         poseStack.scale(-0.0185F, -0.0185F, 0.0185F);
         drawLine(poseStack, buffer, Component.literal(teamName), 0xFF9DF6FF, packedLight, -18);
@@ -96,10 +99,12 @@ public class FactionCoreBlockEntityRenderer implements BlockEntityRenderer<Facti
         String timerText = String.format("%02d:%02d", remainingSeconds / 60L, remainingSeconds % 60L);
         String bar = progressBar(raidVisual.progressFraction());
         String versus = raidVisual.attackerName() + " vs " + raidVisual.defenderName();
-        String zone = "Zone " + blockEntity.getBreachRadius() + "  Forge x" + blockEntity.getNextRaidCostScale();
+        String zone = "Zone " + blockEntity.getBreachRadius()
+                + "  Path " + blockEntity.getBreachPathWidth()
+                + "  Forge x" + blockEntity.getNextRaidCostScale();
 
         poseStack.pushPose();
-        poseStack.translate(0.5D, 2.1D + Mth.sin((blockEntity.getLevel().getGameTime() + partialTick) * 0.08F) * 0.05F, 0.5D);
+        poseStack.translate(0.5D, (CORE_MODEL_HEIGHT + 1.1D) + Mth.sin((blockEntity.getLevel().getGameTime() + partialTick) * 0.08F) * 0.05F, 0.5D);
         poseStack.mulPose(Minecraft.getInstance().getEntityRenderDispatcher().cameraOrientation());
         poseStack.scale(-0.021F, -0.021F, 0.021F);
         drawLine(poseStack, buffer, Component.literal("RAID LOCK " + timerText), 0xFFFF6B6B, packedLight, -22);
@@ -112,7 +117,9 @@ public class FactionCoreBlockEntityRenderer implements BlockEntityRenderer<Facti
     private void renderOrbiters(FactionCoreBlockEntity blockEntity, ClientRaidState.RaidVisual raidVisual, float ticks, PoseStack poseStack,
                                 MultiBufferSource buffer, int packedLight, int packedOverlay, double baseScale) {
         List<ItemStack> orbiters = resolveOrbiterItems(blockEntity, raidVisual);
-        double[] heights = raidVisual != null ? new double[]{0.96D, 1.14D, 1.34D} : new double[]{1.02D, 1.16D, 1.3D};
+        double[] heights = raidVisual != null
+                ? new double[]{CORE_MODEL_HEIGHT + 0.06D, CORE_MODEL_HEIGHT + 0.24D, CORE_MODEL_HEIGHT + 0.44D}
+                : new double[]{CORE_MODEL_HEIGHT + 0.02D, CORE_MODEL_HEIGHT + 0.16D, CORE_MODEL_HEIGHT + 0.30D};
         float[] radii = raidVisual != null ? new float[]{0.82F, 0.62F, 0.46F} : new float[]{0.68F, 0.54F, 0.44F};
         float speed = raidVisual != null ? 6.5F : 4.0F;
         for (int i = 0; i < orbiters.size(); i++) {
@@ -145,7 +152,7 @@ public class FactionCoreBlockEntityRenderer implements BlockEntityRenderer<Facti
                 new ItemStack(Items.DIAMOND_SWORD), ticks);
 
         poseStack.pushPose();
-        poseStack.translate(0.5D, 3.72D + (Math.sin(ticks * 0.22F) * 0.12F), 0.5D);
+        poseStack.translate(0.5D, (CORE_MODEL_HEIGHT + 1.72D) + (Math.sin(ticks * 0.22F) * 0.12F), 0.5D);
         poseStack.mulPose(Axis.YP.rotationDegrees((ticks * 10F) % 360F));
         poseStack.mulPose(Axis.XP.rotationDegrees(86F));
         float flashScale = (float) ((0.6F + (clashPulse * 0.42F)) * baseScale);
@@ -155,7 +162,7 @@ public class FactionCoreBlockEntityRenderer implements BlockEntityRenderer<Facti
         poseStack.popPose();
 
         poseStack.pushPose();
-        poseStack.translate(0.5D, 2.86D + (Math.sin(ticks * 0.18F) * 0.08F), 0.5D);
+        poseStack.translate(0.5D, (CORE_MODEL_HEIGHT + 0.86D) + (Math.sin(ticks * 0.18F) * 0.08F), 0.5D);
         poseStack.mulPose(Axis.YP.rotationDegrees((-ticks * 7.5F) % 360F));
         poseStack.mulPose(Axis.XP.rotationDegrees(82F));
         poseStack.scale((float) (0.62F * baseScale), (float) (0.62F * baseScale), (float) (0.62F * baseScale));
@@ -169,7 +176,7 @@ public class FactionCoreBlockEntityRenderer implements BlockEntityRenderer<Facti
         float lunge = 0.54F - (swing * 0.34F);
         float slashTilt = 122F - (swing * 26F);
         poseStack.pushPose();
-        poseStack.translate(0.5D + (side * lunge), 3.36D + (Math.sin((ticks * 0.24F) + (leftSide ? 0F : 1.2F)) * 0.1F),
+        poseStack.translate(0.5D + (side * lunge), (CORE_MODEL_HEIGHT + 1.36D) + (Math.sin((ticks * 0.24F) + (leftSide ? 0F : 1.2F)) * 0.1F),
                 0.5D + (side * 0.16F * Mth.cos(ticks * 0.19F)));
         poseStack.mulPose(Axis.YP.rotationDegrees(leftSide ? 36F + (swing * 10F) : -36F - (swing * 10F)));
         poseStack.mulPose(Axis.ZP.rotationDegrees(leftSide ? slashTilt : -slashTilt));

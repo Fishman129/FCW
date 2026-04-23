@@ -1,5 +1,0 @@
-#47F minecraft:birch_forest
-#4F9 minecraft:dark_forest
-#1DF minecraft:old_growth_birch_forest
-#4D3 minecraft:swamp
-#169 minecraft:taiga

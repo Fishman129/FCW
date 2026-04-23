@@ -1,0 +1,25 @@
+{
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "texture_size": [32, 64],
+  "textures": {
+    "side": "fcw:block/faction_core_side",
+    "top": "fcw:block/faction_core_top",
+    "particle": "fcw:block/faction_core_side"
+  },
+  "elements": [
+    {
+      "shade": false,
+      "from": [0, 0, 0],
+      "to": [16, 16, 16],
+      "faces": {
+        "north": { "uv": [0, 0, 16, 8], "texture": "#side" },
+        "east": { "uv": [0, 0, 16, 8], "texture": "#side" },
+        "south": { "uv": [0, 0, 16, 8], "texture": "#side" },
+        "west": { "uv": [0, 0, 16, 8], "texture": "#side" },
+        "up": { "uv": [0, 0, 16, 16], "texture": "#top" },
+        "down": { "uv": [0, 0, 16, 16], "texture": "#top" }
+      }
+    }
+  ]
+}

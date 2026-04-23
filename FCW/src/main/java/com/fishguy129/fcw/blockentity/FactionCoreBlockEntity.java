@@ -26,13 +26,15 @@ public class FactionCoreBlockEntity extends BlockEntity {
     private int targetClaims;
     private int nextRaidCostScale;
     private int breachRadius;
+    private int breachPathWidth;
     private List<ItemStack> hologramItems = List.of(ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY);
 
     public FactionCoreBlockEntity(BlockPos pos, BlockState state) {
         super(FCWBlockEntities.FACTION_CORE.get(), pos, state);
     }
 
-    public void syncFromRecord(FCWSavedData.CoreRecord coreRecord, String displayName, int currentClaims, int targetClaims, int nextRaidCostScale, int breachRadius) {
+    public void syncFromRecord(FCWSavedData.CoreRecord coreRecord, String displayName, int currentClaims, int targetClaims,
+                               int nextRaidCostScale, int breachRadius, int breachPathWidth) {
         // Only kick a block update when something players can actually see changed.
         boolean changed = !java.util.Objects.equals(this.teamId, coreRecord.teamId())
                 || !this.teamName.equals(displayName)
@@ -42,6 +44,7 @@ public class FactionCoreBlockEntity extends BlockEntity {
                 || this.targetClaims != targetClaims
                 || this.nextRaidCostScale != nextRaidCostScale
                 || this.breachRadius != breachRadius
+                || this.breachPathWidth != breachPathWidth
                 || !sameStacks(this.hologramItems, coreRecord.hologramItems());
         this.teamId = coreRecord.teamId();
         this.teamName = displayName;
@@ -51,6 +54,7 @@ public class FactionCoreBlockEntity extends BlockEntity {
         this.targetClaims = targetClaims;
         this.nextRaidCostScale = nextRaidCostScale;
         this.breachRadius = breachRadius;
+        this.breachPathWidth = breachPathWidth;
         this.hologramItems = copyStacks(coreRecord.hologramItems());
         if (changed) {
             setChanged();
@@ -92,6 +96,10 @@ public class FactionCoreBlockEntity extends BlockEntity {
         return breachRadius;
     }
 
+    public int getBreachPathWidth() {
+        return breachPathWidth;
+    }
+
     public List<ItemStack> getHologramItems() {
         return copyStacks(hologramItems);
     }
@@ -115,6 +123,7 @@ public class FactionCoreBlockEntity extends BlockEntity {
         tag.putInt("targetClaims", targetClaims);
         tag.putInt("nextRaidCostScale", nextRaidCostScale);
         tag.putInt("breachRadius", breachRadius);
+        tag.putInt("breachPathWidth", breachPathWidth);
         net.minecraft.nbt.ListTag hologramList = new net.minecraft.nbt.ListTag();
         for (ItemStack stack : hologramItems) {
             CompoundTag itemTag = new CompoundTag();
@@ -135,6 +144,7 @@ public class FactionCoreBlockEntity extends BlockEntity {
         targetClaims = tag.getInt("targetClaims");
         nextRaidCostScale = tag.getInt("nextRaidCostScale");
         breachRadius = tag.getInt("breachRadius");
+        breachPathWidth = tag.getInt("breachPathWidth");
         net.minecraft.nbt.ListTag hologramList = tag.getList("hologramItems", net.minecraft.nbt.Tag.TAG_COMPOUND);
         List<ItemStack> loaded = new ArrayList<>();
         for (int i = 0; i < hologramList.size(); i++) {

@@ -15,9 +15,12 @@ import dev.ftb.mods.ftbteams.api.event.PlayerLeftPartyTeamEvent;
 import dev.ftb.mods.ftbteams.api.event.TeamEvent;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
@@ -295,7 +298,8 @@ public class FCWForgeEvents {
         if (player == null || player.level().isClientSide()) {
             return false;
         }
-        if (player.level().getBlockState(pos).is(FCWBlocks.FACTION_CORE.get()) && !player.getMainHandItem().is(FCWItems.RAID_BEACON.get())) {
+        BlockPos coreBasePos = resolveCoreBasePos(player, pos);
+        if (coreBasePos != null && !player.getMainHandItem().is(FCWItems.RAID_BEACON.get())) {
             return false;
         }
         return FCWMod.CORE_MANAGER.isWithinBreachZone(player.level(), pos) || FCWMod.RAID_MANAGER.isProtectionSuspended(player.level(), pos);
@@ -312,7 +316,8 @@ public class FCWForgeEvents {
     }
 
     private boolean handleCoreInteraction(PlayerInteractEvent.RightClickBlock event, ServerPlayer player) {
-        if (!player.level().getBlockState(event.getPos()).is(FCWBlocks.FACTION_CORE.get())) {
+        BlockPos corePos = resolveCoreBasePos(player, event.getPos());
+        if (corePos == null) {
             return false;
         }
 
@@ -320,7 +325,7 @@ public class FCWForgeEvents {
         // catalyst upgrades claims, empty hand opens the UI.
         net.minecraft.world.item.ItemStack heldStack = player.getItemInHand(event.getHand());
         if (heldStack.is(FCWItems.RAID_BEACON.get())) {
-            boolean success = FCWMod.RAID_MANAGER.startRaid(player, event.getPos(), heldStack);
+            boolean success = FCWMod.RAID_MANAGER.startRaid(player, corePos, heldStack);
             if (success) {
                 heldStack.shrink(1);
             }
@@ -329,7 +334,7 @@ public class FCWForgeEvents {
         }
 
         if (heldStack.is(FCWItems.CLAIM_CATALYST.get())) {
-            boolean success = FCWMod.CORE_MANAGER.applyClaimUpgrade(player, event.getPos());
+            boolean success = FCWMod.CORE_MANAGER.applyClaimUpgrade(player, corePos);
             if (success) {
                 heldStack.shrink(1);
             }
@@ -337,13 +342,25 @@ public class FCWForgeEvents {
             return true;
         }
 
-        if (heldStack.getItem() instanceof BlockItem) {
+        if (player.isShiftKeyDown() && heldStack.getItem() instanceof BlockItem) {
             return false;
         }
 
-        boolean opened = FCWMod.CORE_MANAGER.openCoreMenu(player, event.getPos(), false);
+        boolean opened = FCWMod.CORE_MANAGER.openCoreMenu(player, corePos, false);
         consumeCoreInteraction(event, opened ? InteractionResult.SUCCESS : InteractionResult.FAIL);
         return true;
+    }
+
+    private BlockPos resolveCoreBasePos(ServerPlayer player, BlockPos pos) {
+        BlockState state = player.level().getBlockState(pos);
+        if (!state.is(FCWBlocks.FACTION_CORE.get())) {
+            return null;
+        }
+        if (state.hasProperty(com.fishguy129.fcw.block.FactionCoreBlock.HALF)
+                && state.getValue(com.fishguy129.fcw.block.FactionCoreBlock.HALF) == DoubleBlockHalf.UPPER) {
+            return pos.below();
+        }
+        return pos;
     }
 
     private void consumeCoreInteraction(PlayerInteractEvent.RightClickBlock event, InteractionResult result) {

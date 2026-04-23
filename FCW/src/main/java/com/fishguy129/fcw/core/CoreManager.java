@@ -43,6 +43,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraftforge.network.NetworkHooks;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -444,7 +445,7 @@ public class CoreManager {
 
     public boolean isWithinBreachZone(Level level, BlockPos pos) {
         int radius = FCWServerConfig.BREACH_RADIUS.get();
-        int radiusSq = radius * radius;
+        int pathWidth = FCWServerConfig.BREACH_PATH_WIDTH.get();
         for (FCWSavedData.CoreRecord record : data(level.getServer()).allCores()) {
             if (!record.active() || record.packed() || !record.dimension().equals(level.dimension())) {
                 continue;
@@ -452,9 +453,15 @@ public class CoreManager {
             if (record.pos().equals(pos)) {
                 continue;
             }
-            int dx = pos.getX() - record.pos().getX();
-            int dz = pos.getZ() - record.pos().getZ();
-            if (dx * dx + dz * dz <= radiusSq) {
+            if (CoreBreachShape.isInsideRadius(record.pos(), pos, radius)) {
+                return true;
+            }
+            if (pathWidth <= 0 || !CoreBreachShape.isInsidePath(record.pos(), pos, pathWidth)) {
+                continue;
+            }
+
+            dev.ftb.mods.ftbchunks.api.ClaimedChunk claim = chunkCompat.getClaim(new dev.ftb.mods.ftblibrary.math.ChunkDimPos(level, pos));
+            if (claim != null && claim.getTeamData().getTeam().getId().equals(record.teamId())) {
                 return true;
             }
         }
@@ -492,6 +499,7 @@ public class CoreManager {
                 continue;
             }
 
+            syncCoreBlock(level, record);
             syncCoreDisplayState(level, record);
 
             FCWSavedData.RaidRecord activeRaid = activeRaidForCore(server, record);
@@ -527,9 +535,22 @@ public class CoreManager {
 
         BlockState state = level.getBlockState(record.pos());
         if (!state.is(FCWBlocks.FACTION_CORE.get())) {
-            level.setBlock(record.pos(), FCWBlocks.FACTION_CORE.get().defaultBlockState().setValue(FactionCoreBlock.ACTIVE, record.active()), 3);
+            level.setBlock(record.pos(), FCWBlocks.FACTION_CORE.get().defaultBlockState()
+                    .setValue(FactionCoreBlock.ACTIVE, record.active())
+                    .setValue(FactionCoreBlock.HALF, DoubleBlockHalf.LOWER), 3);
         } else if (state.getValue(FactionCoreBlock.ACTIVE) != record.active()) {
             level.setBlock(record.pos(), state.setValue(FactionCoreBlock.ACTIVE, record.active()), 3);
+        }
+
+        BlockPos upperPos = record.pos().above();
+        BlockState upperState = level.getBlockState(upperPos);
+        if (!upperState.is(FCWBlocks.FACTION_CORE.get())
+                || !upperState.hasProperty(FactionCoreBlock.HALF)
+                || upperState.getValue(FactionCoreBlock.HALF) != DoubleBlockHalf.UPPER
+                || upperState.getValue(FactionCoreBlock.ACTIVE) != record.active()) {
+            level.setBlock(upperPos, FCWBlocks.FACTION_CORE.get().defaultBlockState()
+                    .setValue(FactionCoreBlock.ACTIVE, record.active())
+                    .setValue(FactionCoreBlock.HALF, DoubleBlockHalf.UPPER), 3);
         }
 
         BlockEntity blockEntity = level.getBlockEntity(record.pos());
@@ -543,7 +564,8 @@ public class CoreManager {
                     currentClaims,
                     Math.max(currentClaims, allowedClaimCount(record)),
                     data(level.getServer()).raidCraftCount(record.teamId()),
-                    FCWServerConfig.BREACH_RADIUS.get()
+                    FCWServerConfig.BREACH_RADIUS.get(),
+                    FCWServerConfig.BREACH_PATH_WIDTH.get()
             );
         }
     }
@@ -836,7 +858,8 @@ public class CoreManager {
                 currentClaims,
                 Math.max(currentClaims, allowedClaimCount(record)),
                 data(level.getServer()).raidCraftCount(record.teamId()),
-                FCWServerConfig.BREACH_RADIUS.get()
+                FCWServerConfig.BREACH_RADIUS.get(),
+                FCWServerConfig.BREACH_PATH_WIDTH.get()
         );
     }
 
@@ -1159,7 +1182,11 @@ public class CoreManager {
                         ? ClaimOutlineMessage.clear()
                         : new ClaimOutlineMessage(
                                 player.level().dimension().location().toString(),
+                                record == null ? player.blockPosition().getX() : record.pos().getX(),
                                 record == null ? player.blockPosition().getY() : record.pos().getY(),
+                                record == null ? player.blockPosition().getZ() : record.pos().getZ(),
+                                FCWServerConfig.BREACH_RADIUS.get(),
+                                FCWServerConfig.BREACH_PATH_WIDTH.get(),
                                 chunks
                         ));
     }
@@ -1197,7 +1224,11 @@ public class CoreManager {
             if (!chunks.isEmpty()) {
                 enemyOutlines.add(new EnemyClaimOutlineMessage.EnemyOutline(
                         player.level().dimension().location().toString(),
+                        record.pos().getX(),
                         record.pos().getY(),
+                        record.pos().getZ(),
+                        FCWServerConfig.BREACH_RADIUS.get(),
+                        FCWServerConfig.BREACH_PATH_WIDTH.get(),
                         chunks
                 ));
             }

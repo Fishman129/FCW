@@ -11,20 +11,26 @@ import java.util.List;
 import java.util.function.Supplier;
 
 // Server-to-client sync for the local faction's owned chunk outline.
-public record ClaimOutlineMessage(boolean active, String dimensionId, int coreY, List<Long> chunkLongs) {
-    public ClaimOutlineMessage(String dimensionId, int coreY, List<Long> chunkLongs) {
-        this(true, dimensionId, coreY, List.copyOf(chunkLongs));
+public record ClaimOutlineMessage(boolean active, String dimensionId, int coreX, int coreY, int coreZ,
+                                  int breachRadius, int breachPathWidth, List<Long> chunkLongs) {
+    public ClaimOutlineMessage(String dimensionId, int coreX, int coreY, int coreZ,
+                               int breachRadius, int breachPathWidth, List<Long> chunkLongs) {
+        this(true, dimensionId, coreX, coreY, coreZ, breachRadius, breachPathWidth, List.copyOf(chunkLongs));
     }
 
     public static ClaimOutlineMessage clear() {
-        return new ClaimOutlineMessage(false, "", 0, List.of());
+        return new ClaimOutlineMessage(false, "", 0, 0, 0, 0, 0, List.of());
     }
 
     public static void encode(ClaimOutlineMessage message, net.minecraft.network.FriendlyByteBuf buffer) {
         buffer.writeBoolean(message.active);
         if (message.active) {
             buffer.writeUtf(message.dimensionId);
+            buffer.writeVarInt(message.coreX);
             buffer.writeVarInt(message.coreY);
+            buffer.writeVarInt(message.coreZ);
+            buffer.writeVarInt(message.breachRadius);
+            buffer.writeVarInt(message.breachPathWidth);
             buffer.writeVarInt(message.chunkLongs.size());
             for (Long chunkLong : message.chunkLongs) {
                 buffer.writeLong(chunkLong);
@@ -39,13 +45,17 @@ public record ClaimOutlineMessage(boolean active, String dimensionId, int coreY,
         }
 
         String dimensionId = buffer.readUtf();
+        int coreX = buffer.readVarInt();
         int coreY = buffer.readVarInt();
+        int coreZ = buffer.readVarInt();
+        int breachRadius = buffer.readVarInt();
+        int breachPathWidth = buffer.readVarInt();
         int size = buffer.readVarInt();
         List<Long> chunkLongs = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
             chunkLongs.add(buffer.readLong());
         }
-        return new ClaimOutlineMessage(true, dimensionId, coreY, chunkLongs);
+        return new ClaimOutlineMessage(true, dimensionId, coreX, coreY, coreZ, breachRadius, breachPathWidth, chunkLongs);
     }
 
     public static void handle(ClaimOutlineMessage message, Supplier<NetworkEvent.Context> supplier) {
@@ -59,6 +69,12 @@ public record ClaimOutlineMessage(boolean active, String dimensionId, int coreY,
             ClientClaimOutlineState.clear();
             return;
         }
-        ClientClaimOutlineState.update(new ResourceLocation(message.dimensionId), message.coreY, message.chunkLongs);
+        ClientClaimOutlineState.update(new ResourceLocation(message.dimensionId),
+                message.coreX,
+                message.coreY,
+                message.coreZ,
+                message.breachRadius,
+                message.breachPathWidth,
+                message.chunkLongs);
     }
 }

@@ -1,6 +1,16 @@
 {
   "variants": {
-    "lit=true": { "model": "fcw:block/faction_core" },
-    "lit=false": { "model": "fcw:block/faction_core" }
+    "half=lower,lit=false": {
+      "model": "fcw:block/faction_core_lower"
+    },
+    "half=lower,lit=true": {
+      "model": "fcw:block/faction_core_lower"
+    },
+    "half=upper,lit=false": {
+      "model": "fcw:block/faction_core_upper"
+    },
+    "half=upper,lit=true": {
+      "model": "fcw:block/faction_core_upper"
+    }
   }
 }

@@ -3,7 +3,14 @@
 **/.gradle/
 **/build/
 **/run/
+**/run-loom/
 **/out/
+**/bin/
+**/logs/
+*.log
+*.tmp
+hs_err_pid*
+replay_pid*
 *.iml
 Architectury-API/
 FTB-Chunks/

@@ -9,6 +9,7 @@ public final class FCWServerConfig {
     public static final ForgeConfigSpec SPEC;
 
     public static final ForgeConfigSpec.IntValue BREACH_RADIUS;
+    public static final ForgeConfigSpec.IntValue BREACH_PATH_WIDTH;
     public static final ForgeConfigSpec.IntValue BASE_CLAIM_CHUNKS;
     public static final ForgeConfigSpec.DoubleValue CORE_AMBIENT_EFFECT_MULTIPLIER;
     public static final ForgeConfigSpec.DoubleValue CORE_RAID_EFFECT_MULTIPLIER;
@@ -53,9 +54,11 @@ public final class FCWServerConfig {
         builder.comment(
                 "Faction core settings.",
                 "breachRadius controls the defended ground radius rendered around active cores.",
+                "breachPathWidth controls the width of the unprotected straight access paths from the core to the claim fence in the four cardinal directions.",
                 "relocationCooldownSeconds controls how long a faction must wait before packing a placed core again.",
                 "unclaimAllOnCorePack should usually stay true so packing a core fully releases faction claims before it is moved.");
         BREACH_RADIUS = builder.defineInRange("breachRadius", 7, 1, 32);
+        BREACH_PATH_WIDTH = builder.defineInRange("breachPathWidth", 3, 0, 33);
         BASE_CLAIM_CHUNKS = builder.defineInRange("baseClaimChunks", 1, 0, 4096);
         CORE_AMBIENT_EFFECT_MULTIPLIER = builder.defineInRange("ambientEffectMultiplier", 1.0D, 0.1D, 8.0D);
         CORE_RAID_EFFECT_MULTIPLIER = builder.defineInRange("raidEffectMultiplier", 1.25D, 0.1D, 8.0D);

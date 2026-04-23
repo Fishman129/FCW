@@ -11,7 +11,8 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public record EnemyClaimOutlineMessage(List<EnemyOutline> outlines) {
-    public record EnemyOutline(String dimensionId, int coreY, List<Long> chunkLongs) {
+    public record EnemyOutline(String dimensionId, int coreX, int coreY, int coreZ,
+                               int breachRadius, int breachPathWidth, List<Long> chunkLongs) {
     }
 
     public static EnemyClaimOutlineMessage clear() {
@@ -22,7 +23,11 @@ public record EnemyClaimOutlineMessage(List<EnemyOutline> outlines) {
         buffer.writeVarInt(message.outlines.size());
         for (EnemyOutline outline : message.outlines) {
             buffer.writeUtf(outline.dimensionId);
+            buffer.writeVarInt(outline.coreX);
             buffer.writeVarInt(outline.coreY);
+            buffer.writeVarInt(outline.coreZ);
+            buffer.writeVarInt(outline.breachRadius);
+            buffer.writeVarInt(outline.breachPathWidth);
             buffer.writeVarInt(outline.chunkLongs.size());
             for (Long chunkLong : outline.chunkLongs) {
                 buffer.writeLong(chunkLong);
@@ -35,13 +40,17 @@ public record EnemyClaimOutlineMessage(List<EnemyOutline> outlines) {
         List<EnemyOutline> outlines = new ArrayList<>(outlineCount);
         for (int i = 0; i < outlineCount; i++) {
             String dimensionId = buffer.readUtf();
+            int coreX = buffer.readVarInt();
             int coreY = buffer.readVarInt();
+            int coreZ = buffer.readVarInt();
+            int breachRadius = buffer.readVarInt();
+            int breachPathWidth = buffer.readVarInt();
             int chunkCount = buffer.readVarInt();
             List<Long> chunkLongs = new ArrayList<>(chunkCount);
             for (int j = 0; j < chunkCount; j++) {
                 chunkLongs.add(buffer.readLong());
             }
-            outlines.add(new EnemyOutline(dimensionId, coreY, chunkLongs));
+            outlines.add(new EnemyOutline(dimensionId, coreX, coreY, coreZ, breachRadius, breachPathWidth, chunkLongs));
         }
         return new EnemyClaimOutlineMessage(List.copyOf(outlines));
     }

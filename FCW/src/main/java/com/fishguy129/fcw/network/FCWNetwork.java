@@ -7,7 +7,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 
 // Central packet registration
 public final class FCWNetwork {
-    private static final String PROTOCOL = "3";
+    private static final String PROTOCOL = "4";
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(FCWMod.MOD_ID, "main"),
             () -> PROTOCOL,
