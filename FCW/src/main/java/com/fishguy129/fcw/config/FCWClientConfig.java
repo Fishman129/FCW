@@ -20,6 +20,7 @@ public final class FCWClientConfig {
     public static final ForgeConfigSpec.ConfigValue<String> RAID_MUSIC_SOUND;
     public static final ForgeConfigSpec.DoubleValue RAID_MUSIC_VOLUME;
     public static final ForgeConfigSpec.IntValue RAID_MUSIC_RANGE;
+    public static final ForgeConfigSpec.IntValue CORE_ZONE_RING_CULL_DISTANCE;
 
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
@@ -40,6 +41,8 @@ public final class FCWClientConfig {
         OWN_CLAIM_OUTLINE_REVEAL_DISTANCE = builder.comment("Maximum distance in blocks where nearby claim-outline fence segments fade in.")
                 .defineInRange("ownClaimOutlineRevealDistance", 7.0D, 1.0D, 64.0D);
         builder.pop();
+        CORE_ZONE_RING_CULL_DISTANCE = builder.comment("Distance in blocks beyond which the core zone ring stops rendering. Set high to effectively disable culling.")
+                .defineInRange("coreZoneRingCullDistance", 16, 16, 512);
 
         builder.push("raidVisuals");
         ENABLE_RAID_PLAYER_HIGHLIGHTS = builder.comment("Render red/blue raid highlights around active participants.")

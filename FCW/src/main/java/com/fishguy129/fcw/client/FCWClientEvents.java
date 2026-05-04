@@ -92,6 +92,7 @@ public class FCWClientEvents {
     private static final float CLAIM_OUTLINE_MIN_SEGMENT_VISIBILITY = 0.004F;
     private static final String RAID_ATTACKER_OUTLINE_TEAM = "fcw_raid_attacker_outline";
     private static final String RAID_DEFENDER_OUTLINE_TEAM = "fcw_raid_defender_outline";
+    private static final float ZONE_RING_FADE_BAND = 24.0F;
 
     private static final Map<ClaimSegmentKey, Float> CLAIM_SEGMENT_VISIBILITY = new HashMap<>();
     private static final Map<UUID, String> RAID_OUTLINE_PREVIOUS_TEAMS = new HashMap<>();
@@ -460,8 +461,16 @@ public class FCWClientEvents {
             return;
         }
 
+        double cullDist = FCWClientConfig.CORE_ZONE_RING_CULL_DISTANCE.get();
+        double dx = localPlayer.getX() - (outline.corePos().getX() + 0.5D);
+        double dz = localPlayer.getZ() - (outline.corePos().getZ() + 0.5D);
+        float visibility = zoneRingRevealFactor(Math.sqrt(dx * dx + dz * dz), cullDist);
+        if (visibility <= 0.0F) {
+            return;
+        }
+
         float tickTime = localPlayer.level().getGameTime() + Minecraft.getInstance().getFrameTime();
-        renderCoreZoneRing(fillBuffer, lineBuffer, poseStack, outline.corePos(), outline.breachRadius(), false, tickTime);
+        renderCoreZoneRing(fillBuffer, lineBuffer, poseStack, outline.corePos(), outline.breachRadius(), false, tickTime, visibility);
     }
 
     private void renderEnemyCoreZoneRings(VertexConsumer fillBuffer, VertexConsumer lineBuffer, PoseStack poseStack, LocalPlayer localPlayer) {
@@ -471,26 +480,35 @@ public class FCWClientEvents {
 
         ResourceLocation currentDimension = localPlayer.level().dimension().location();
         float tickTime = localPlayer.level().getGameTime() + Minecraft.getInstance().getFrameTime();
+        double cullDist = FCWClientConfig.CORE_ZONE_RING_CULL_DISTANCE.get();
 
         for (ClientEnemyClaimOutlineState.EnemyOutline outline : ClientEnemyClaimOutlineState.all()) {
             if (!outline.dimensionId().equals(currentDimension)) {
                 continue;
             }
 
-            renderCoreZoneRing(fillBuffer, lineBuffer, poseStack, outline.corePos(), outline.breachRadius(), true, tickTime);
+            double dx = localPlayer.getX() - (outline.corePos().getX() + 0.5D);
+            double dz = localPlayer.getZ() - (outline.corePos().getZ() + 0.5D);
+            float visibility = zoneRingRevealFactor(Math.sqrt(dx * dx + dz * dz), cullDist);
+            if (visibility <= 0.0F) {
+                continue;
+            }
+
+            renderCoreZoneRing(fillBuffer, lineBuffer, poseStack, outline.corePos(), outline.breachRadius(), true, tickTime, visibility);
         }
     }
 
     private void renderCoreZoneRing(VertexConsumer fillBuffer, VertexConsumer lineBuffer, PoseStack poseStack,
-                                    BlockPos corePos, int radius, boolean enemyPalette, float tickTime) {
-        if (radius <= 0) {
+                                    BlockPos corePos, int radius, boolean enemyPalette, float tickTime,
+                                    float visibilityMult) {
+        if (radius <= 0 || visibilityMult <= 0.0F) {
             return;
         }
 
         double centerX = corePos.getX() + 0.5D;
         double centerZ = corePos.getZ() + 0.5D;
         double baseY = corePos.getY() + 0.08D;
-        float alpha = FCWClientConfig.CORE_ZONE_RING_ALPHA.get().floatValue();
+        float alpha = FCWClientConfig.CORE_ZONE_RING_ALPHA.get().floatValue() * visibilityMult;
         float pulse = 0.90F + 0.10F * Mth.sin(tickTime * 0.07F + (enemyPalette ? 0.8F : 0.0F));
         float r = enemyPalette ? 1.0F : 0.96F;
         float g = enemyPalette ? 0.22F : 0.96F;
@@ -2031,6 +2049,14 @@ public class FCWClientEvents {
     private float smootherStep(float x) {
         x = Mth.clamp(x, 0.0F, 1.0F);
         return x * x * x * (x * (x * 6.0F - 15.0F) + 10.0F);
+    }
+
+    private float zoneRingRevealFactor(double dist, double cullDist) {
+        double fadeBand = Math.max(8.0D, ZONE_RING_FADE_BAND);
+        double fullRevealDist = Math.max(0.0D, cullDist - fadeBand);
+        if (dist <= fullRevealDist) return 1.0F;
+        if (dist >= cullDist) return 0.0F;
+        return smootherStep((float) (1.0D - (dist - fullRevealDist) / fadeBand));
     }
 
     private double distanceToSegment(double playerX, double playerZ,

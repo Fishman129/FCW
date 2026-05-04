@@ -6,6 +6,7 @@ import com.fishguy129.fcw.blockentity.FactionCoreBlockEntity;
 import com.fishguy129.fcw.claims.ClaimExpansionPlanner;
 import com.fishguy129.fcw.compat.ftbchunks.FtbChunkCompat;
 import com.fishguy129.fcw.compat.ftbteams.FtbTeamCompat;
+import com.fishguy129.fcw.config.FCWClientConfig;
 import com.fishguy129.fcw.config.FCWServerConfig;
 import com.fishguy129.fcw.data.FCWSavedData;
 import com.fishguy129.fcw.item.FactionCoreItem;
@@ -48,6 +49,7 @@ import net.minecraftforge.network.NetworkHooks;
 import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.joml.Vector3f;
+import javax.annotation.Nullable;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -57,6 +59,7 @@ import java.util.stream.Collectors;
 // How long did this take me you ask? A lot.
 public class CoreManager {
     private static final ThreadLocal<MutationScope> MUTATION_SCOPE = new ThreadLocal<>();
+    private static final double RAID_PARTICLE_CULL_DIST_SQ = FCWClientConfig.CORE_ZONE_RING_CULL_DISTANCE.get();
 
     private final FtbTeamCompat teamCompat;
     private final FtbChunkCompat chunkCompat;
@@ -752,7 +755,7 @@ public class CoreManager {
         burst(level, pos, ParticleTypes.ELECTRIC_SPARK, 25, 0.55D, 0.55D, 0.55D, 0.08D);
         burst(level, pos, ParticleTypes.SCULK_SOUL, 18, 0.7D, 0.4D, 0.7D, 0.03D);
         burst(level, pos, ParticleTypes.SWEEP_ATTACK, 8, 0.38D, 0.32D, 0.38D, 0.0D);
-        spawnSwordClashParticles(level, pos, level.getGameTime(), 1.5D);
+        spawnSwordClashParticles(level, pos, level.getGameTime(), 1.5D, null);
         level.playSound(null, pos, SoundEvents.BEACON_DEACTIVATE, SoundSource.BLOCKS, 1.0F, 0.75F);
         level.playSound(null, pos, SoundEvents.RESPAWN_ANCHOR_DEPLETE.value(), SoundSource.BLOCKS, 0.8F, 0.9F);
         level.playSound(null, pos, SoundEvents.END_PORTAL_SPAWN, SoundSource.BLOCKS, 0.65F, 0.55F);
@@ -801,13 +804,13 @@ public class CoreManager {
         }
 
         if (time % 20L == 0L) {
-            spawnBaseHalo(level, pos, false, ambientScale, time);
+            spawnBaseHalo(level, pos, false, ambientScale, time, null);
         }
         if (time % 15L == 0L) {
-            spawnGroundSigil(level, pos, false, ambientScale, time);
+            spawnGroundSigil(level, pos, false, ambientScale, time, null);
         }
         if (time % 30L == 0L) {
-            spawnZoneRingParticles(level, pos, FCWServerConfig.BREACH_RADIUS.get(), false, time);
+            spawnZoneRingParticles(level, pos, FCWServerConfig.BREACH_RADIUS.get(), false, time, null);
         }
     }
 
@@ -815,27 +818,33 @@ public class CoreManager {
         BlockPos pos = record.pos();
         double raidScale = FCWServerConfig.CORE_RAID_EFFECT_MULTIPLIER.get();
         float progress = raid.requiredTicks() <= 0L ? 1F : Mth.clamp((float) raid.progressTicks() / (float) raid.requiredTicks(), 0F, 1F);
-        level.sendParticles(new DustParticleOptions(new Vector3f(0.98F, 0.18F + (0.2F * (1.0F - progress)), 0.22F), 1.2F),
+
+        List<ServerPlayer> nearby = nearbyPlayers(level, pos, RAID_PARTICLE_CULL_DIST_SQ);
+        if (nearby.isEmpty()) {
+            return;
+        }
+
+        sendParticles(level, nearby, new DustParticleOptions(new Vector3f(0.98F, 0.18F + (0.2F * (1.0F - progress)), 0.22F), 1.2F),
                 pos.getX() + 0.5D, pos.getY() + 0.98D, pos.getZ() + 0.5D,
                 scaledCount(5, raidScale), 0.22D, 0.14D, 0.22D, 0.01D);
-        level.sendParticles(new DustParticleOptions(new Vector3f(0.26F, 0.58F, 1.0F), 1.0F),
+        sendParticles(level, nearby, new DustParticleOptions(new Vector3f(0.26F, 0.58F, 1.0F), 1.0F),
                 pos.getX() + 0.5D, pos.getY() + 0.86D, pos.getZ() + 0.5D,
                 scaledCount(4, raidScale), 0.18D, 0.12D, 0.18D, 0.01D);
-        level.sendParticles(ParticleTypes.SOUL_FIRE_FLAME,
+        sendParticles(level, nearby, ParticleTypes.SOUL_FIRE_FLAME,
                 pos.getX() + 0.5D, pos.getY() + 0.82D, pos.getZ() + 0.5D,
                 scaledCount(2, raidScale), 0.24D, 0.06D, 0.24D, 0.002D);
 
         if (time % 20L == 0L) {
-            spawnZoneRingParticles(level, pos, FCWServerConfig.BREACH_RADIUS.get(), true, time);
+            spawnZoneRingParticles(level, pos, FCWServerConfig.BREACH_RADIUS.get(), true, time, nearby);
         }
         if (time % 10L == 0L) {
-            spawnBaseHalo(level, pos, true, raidScale, time);
+            spawnBaseHalo(level, pos, true, raidScale, time, nearby);
         }
         if (time % 8L == 0L) {
-            spawnGroundSigil(level, pos, true, raidScale, time);
+            spawnGroundSigil(level, pos, true, raidScale, time, nearby);
         }
         if (time % 6L == 0L) {
-            spawnSwordClashParticles(level, pos, time, raidScale);
+            spawnSwordClashParticles(level, pos, time, raidScale, nearby);
         }
         if (time % 80L == 0L) {
             level.playSound(null, pos, resolveConfiguredSound(FCWServerConfig.RAID_WORLD_SOUND_EVENT.get(), SoundEvents.RESPAWN_ANCHOR_CHARGE),
@@ -1269,21 +1278,23 @@ public class CoreManager {
         }
     }
 
-    private void spawnZoneRingParticles(ServerLevel level, BlockPos pos, int radius, boolean raid, long time) {
+    private void spawnZoneRingParticles(ServerLevel level, BlockPos pos, int radius, boolean raid, long time,
+                                        @Nullable List<ServerPlayer> recipients) {
         for (int i = 0; i < 18; i++) {
             double angle = (Math.PI * 2D * i / 18D) + (time * 0.03D);
             double x = pos.getX() + 0.5D + Math.cos(angle) * radius;
             double z = pos.getZ() + 0.5D + Math.sin(angle) * radius;
             if (raid) {
-                level.sendParticles(ParticleTypes.ELECTRIC_SPARK, x, pos.getY() + 0.08D, z, 1, 0.03D, 0.01D, 0.03D, 0.005D);
-                level.sendParticles(new DustParticleOptions(new Vector3f(0.88F, 0.22F, 0.26F), 0.8F), x, pos.getY() + 0.03D, z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+                sendParticles(level, recipients, ParticleTypes.ELECTRIC_SPARK, x, pos.getY() + 0.08D, z, 1, 0.03D, 0.01D, 0.03D, 0.005D);
+                sendParticles(level, recipients, new DustParticleOptions(new Vector3f(0.88F, 0.22F, 0.26F), 0.8F), x, pos.getY() + 0.03D, z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
             } else {
-                level.sendParticles(new DustParticleOptions(new Vector3f(0.24F, 0.86F, 0.95F), 0.65F), x, pos.getY() + 0.03D, z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+                sendParticles(level, recipients, new DustParticleOptions(new Vector3f(0.24F, 0.86F, 0.95F), 0.65F), x, pos.getY() + 0.03D, z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
             }
         }
     }
 
-    private void spawnBaseHalo(ServerLevel level, BlockPos pos, boolean raid, double intensity, long time) {
+    private void spawnBaseHalo(ServerLevel level, BlockPos pos, boolean raid, double intensity, long time,
+                               @Nullable List<ServerPlayer> recipients) {
         int points = scaledCount(10, intensity);
         for (int i = 0; i < points; i++) {
             double angle = (Math.PI * 2D * i / points) + (time * 0.06D);
@@ -1292,15 +1303,16 @@ public class CoreManager {
             double z = pos.getZ() + 0.5D + Math.sin(angle) * radius;
             double y = pos.getY() + (raid ? 0.18D : 0.12D);
             if (raid) {
-                level.sendParticles(ParticleTypes.ELECTRIC_SPARK, x, y, z, 1, 0.01D, 0.01D, 0.01D, 0.01D);
-                level.sendParticles(new DustParticleOptions(new Vector3f(0.95F, 0.28F, 0.24F), 0.85F), x, y, z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+                sendParticles(level, recipients, ParticleTypes.ELECTRIC_SPARK, x, y, z, 1, 0.01D, 0.01D, 0.01D, 0.01D);
+                sendParticles(level, recipients, new DustParticleOptions(new Vector3f(0.95F, 0.28F, 0.24F), 0.85F), x, y, z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
             } else {
-                level.sendParticles(new DustParticleOptions(new Vector3f(0.20F, 0.86F, 0.94F), 0.7F), x, y, z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+                sendParticles(level, recipients, new DustParticleOptions(new Vector3f(0.20F, 0.86F, 0.94F), 0.7F), x, y, z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
             }
         }
     }
 
-    private void spawnGroundSigil(ServerLevel level, BlockPos pos, boolean raid, double intensity, long time) {
+    private void spawnGroundSigil(ServerLevel level, BlockPos pos, boolean raid, double intensity, long time,
+                                  @Nullable List<ServerPlayer> recipients) {
         int points = scaledCount(14, intensity);
         double innerRadius = raid ? 0.78D : 0.58D;
         double outerRadius = raid ? 1.08D : 0.82D;
@@ -1312,30 +1324,31 @@ public class CoreManager {
             double outerX = pos.getX() + 0.5D + Math.cos(angle) * outerRadius;
             double outerZ = pos.getZ() + 0.5D + Math.sin(angle) * outerRadius;
             if (raid) {
-                level.sendParticles(new DustParticleOptions(new Vector3f(0.98F, 0.32F, 0.28F), 0.72F), innerX, y, innerZ, 1, 0.0D, 0.0D, 0.0D, 0.0D);
-                level.sendParticles(ParticleTypes.ELECTRIC_SPARK, outerX, y + 0.02D, outerZ, 1, 0.01D, 0.0D, 0.01D, 0.001D);
+                sendParticles(level, recipients, new DustParticleOptions(new Vector3f(0.98F, 0.32F, 0.28F), 0.72F), innerX, y, innerZ, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+                sendParticles(level, recipients, ParticleTypes.ELECTRIC_SPARK, outerX, y + 0.02D, outerZ, 1, 0.01D, 0.0D, 0.01D, 0.001D);
             } else {
-                level.sendParticles(new DustParticleOptions(new Vector3f(0.25F, 0.9F, 0.98F), 0.58F), innerX, y, innerZ, 1, 0.0D, 0.0D, 0.0D, 0.0D);
-                level.sendParticles(ParticleTypes.ENCHANT, outerX, y + 0.03D, outerZ, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+                sendParticles(level, recipients, new DustParticleOptions(new Vector3f(0.25F, 0.9F, 0.98F), 0.58F), innerX, y, innerZ, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+                sendParticles(level, recipients, ParticleTypes.ENCHANT, outerX, y + 0.03D, outerZ, 1, 0.0D, 0.0D, 0.0D, 0.0D);
             }
         }
     }
 
-    private void spawnSwordClashParticles(ServerLevel level, BlockPos pos, long time, double intensity) {
+    private void spawnSwordClashParticles(ServerLevel level, BlockPos pos, long time, double intensity,
+                                          @Nullable List<ServerPlayer> recipients) {
         double sweep = 0.32D + (0.1D * Math.sin(time * 0.12D));
         double arcHeight = pos.getY() + 1.08D + (Math.sin(time * 0.18D) * 0.08D);
         for (int side = -1; side <= 1; side += 2) {
             double x = pos.getX() + 0.5D + (side * sweep);
             double z = pos.getZ() + 0.5D - (side * sweep * 0.65D);
-            level.sendParticles(ParticleTypes.SWEEP_ATTACK, x, arcHeight, z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
-            level.sendParticles(new DustParticleOptions(new Vector3f(side < 0 ? 0.92F : 0.24F, side < 0 ? 0.32F : 0.64F, 1.0F), 0.85F),
+            sendParticles(level, recipients, ParticleTypes.SWEEP_ATTACK, x, arcHeight, z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            sendParticles(level, recipients,
+                    new DustParticleOptions(new Vector3f(side < 0 ? 0.92F : 0.24F, side < 0 ? 0.32F : 0.64F, 1.0F), 0.85F),
                     x, arcHeight, z, scaledCount(2, intensity), 0.05D, 0.04D, 0.05D, 0.005D);
         }
-
-        level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
+        sendParticles(level, recipients, ParticleTypes.ELECTRIC_SPARK,
                 pos.getX() + 0.5D, pos.getY() + 1.16D, pos.getZ() + 0.5D,
                 scaledCount(5, intensity), 0.14D, 0.12D, 0.14D, 0.04D);
-        level.sendParticles(ParticleTypes.CRIT,
+        sendParticles(level, recipients, ParticleTypes.CRIT,
                 pos.getX() + 0.5D, pos.getY() + 1.12D, pos.getZ() + 0.5D,
                 scaledCount(7, intensity), 0.18D, 0.12D, 0.18D, 0.08D);
     }
@@ -1346,6 +1359,35 @@ public class CoreManager {
 
     private int effectiveUpgradeCount(int upgradeCount) {
         return hasUpgradeCap() ? Math.min(upgradeCount, maxCoreUpgrades()) : upgradeCount;
+    }
+
+    private List<ServerPlayer> nearbyPlayers(ServerLevel level, BlockPos pos, double maxDistSq) {
+        List<ServerPlayer> result = new ArrayList<>();
+        double cx = pos.getX() + 0.5D;
+        double cy = pos.getY() + 0.5D;
+        double cz = pos.getZ() + 0.5D;
+        for (ServerPlayer player : level.players()) {
+            double dx = player.getX() - cx;
+            double dy = player.getY() - cy;
+            double dz = player.getZ() - cz;
+            if (dx * dx + dy * dy + dz * dz <= maxDistSq) {
+                result.add(player);
+            }
+        }
+        return result;
+    }
+
+    private <T extends net.minecraft.core.particles.ParticleOptions> void sendParticles(
+            ServerLevel level, @Nullable List<ServerPlayer> recipients,
+            T particle, double x, double y, double z,
+            int count, double dx, double dy, double dz, double speed) {
+        if (recipients == null) {
+            level.sendParticles(particle, x, y, z, count, dx, dy, dz, speed);
+        } else {
+            for (ServerPlayer player : recipients) {
+                level.sendParticles(player, particle, false, x, y, z, count, dx, dy, dz, speed);
+            }
+        }
     }
 
     private boolean hasUpgradeCap() {
